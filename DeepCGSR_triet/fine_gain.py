@@ -63,7 +63,7 @@ def get_topic_sentiment_metrix(text, dictionary, lda_model, topic_word_metrix, d
     text_p = word_segment(text)
     doc_bow = dictionary.doc2bow(text_p)  # 文档转换成bow
     doc_lda = lda_model[doc_bow]  # [(12, 0.042477883), (13, 0.36870235), (16, 0.35455772), (37, 0.20635633)]
-
+    print(doc_bow)
     # 初始化主题矩阵
     topci_sentiment_m = np.zeros(topic_nums)
 
@@ -71,14 +71,14 @@ def get_topic_sentiment_metrix(text, dictionary, lda_model, topic_word_metrix, d
     sentences = preprocessed(text)
     dep_parser_result_p = []
     for i in sentences:
-        # 依存句法分析
-        # print(i)
+        # 依存句法分析 phan tich cu phap
+        print(i)
         dep_parser_result = dependency_parser.raw_parse(i)
         # print(dep_parser_result)
         for j in dep_parser_result:
             dep_parser_result_p.append([j[0][0], j[2][0]])
-    #     print(dep_parser_result_p)
-    # print(doc_lda)
+        print(dep_parser_result_p)
+    print(doc_lda)
     for topic_id, _ in doc_lda:
         # 获取当前主题的特征词
         cur_topic_words = topic_word_metrix[topic_id]
