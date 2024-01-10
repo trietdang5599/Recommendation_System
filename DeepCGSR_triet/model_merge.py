@@ -21,7 +21,7 @@ def CreateAndWriteCSV(name, data):
     print(f'File CSV "{filename}" đã được tạo và ghi thành công.')
 
 # 数据读取
-data = read_data("./data/raw/All_Beauty_5_test.json")
+data = read_data("./data/All_Beauty_5.json")
 data_df = pd.DataFrame(data)
 data_df.columns = ['reviewerID', 'asin', 'overall', 'reviewText']
 data = data_df["reviewText"].tolist()
@@ -41,8 +41,11 @@ model_path = './config/stanford-parser-full-2020-11-17/stanford-parser-4.2.0-mod
 parser_path = './config/stanford-parser-full-2020-11-17/stanford-parser.jar'
 
 dep_parser = DependencyParser(model_path, parser_path)
+
+print("====================TOPICS=======================")
 print(topic_to_words)
-print(dictionary)
+print("=================================================")
+# print(dictionary)
 # step3: 情感词表
 
 
