@@ -43,6 +43,7 @@ class EarlyStopper(object):
             return False
 
 
+
 def train(model, optimizer, data_loader, criterion, device, log_interval=100):
     model.train()
     total_loss = 0
