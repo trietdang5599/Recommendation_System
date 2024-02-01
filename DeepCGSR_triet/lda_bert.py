@@ -36,11 +36,15 @@ class LDA_BERT:
         if model.method == 'LDA':
             cm = CoherenceModel(model=model.ldamodel, texts=token_lists, corpus = model.corpus, dictionary=model.dictionary, coherence = measure)
         else:
-            topics = LDA_BERT.get_topic_words(token_lists, model.cluster_model.labels_)
-            cm = CoherenceModel(topics=topics, texts = token_lists, corpus=model.corpus, dictionary=model.dictionary, coherence = measure)
+            model.topics = LDA_BERT.get_topic_words(token_lists, model.cluster_model.labels_)
+            
+            print("====================TOPICS=======================")
+            print(model.topics)
+            print("=================================================")
+            cm = CoherenceModel(topics=model.topics, texts = token_lists, corpus=model.corpus, dictionary=model.dictionary, coherence = measure)
             return cm.get_coherence()
     
-    def __init__(self, k=10, method='LDA_BERT'):
+    def __init__(self, k=10, method='LDA_BERT', documents=None):
         """
         :param k: number of topics
         :param method: method chosen for the topic model
@@ -54,7 +58,17 @@ class LDA_BERT:
         self.gamma = 15  # parameter for reletive importance of lda
         self.method = method
         self.AE = None
-        # self.id = method + '_' + datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+        self.data = None
+        self.topics = None
+        data = documents #pd.read_csv('/kaggle/working/train.csv')
+        data = data.fillna('')  # only the comments has NaN's
+        rws = data.reviewText
+        self.token_lists = None
+        sentences, self.token_lists, idx_in = preprocess(rws, samp_size=51000)
+        self.fit(sentences, self.token_lists)
+
+        print('Coherence:', self.get_coherence(self.token_lists, 'c_v'))
+        print("===========================================================")
 
     def vectorize(self, sentences, token_lists, method=None):
         """
@@ -135,44 +149,20 @@ class LDA_BERT:
         self.cluster_model.fit(self.vec[method])
         print('Clustering embeddings. Done!')
 
-    # def predict(self, sentences, token_lists, out_of_sample=None):
-    #     """
-    #     Predict topics for new_documents
-    #     """
-    #     # Default as False
-    #     out_of_sample = out_of_sample is not None
-
-    #     if out_of_sample:
-    #         corpus = [self.dictionary.doc2bow(text) for text in token_lists]
-    #         if self.method != 'LDA':
-    #             vec = self.vectorize(sentences, token_lists)
-    #             print(vec)
-    #     else:
-    #         corpus = self.corpus
-    #         vec = self.vec.get(self.method, None)
-
-    #     if self.method == "LDA":
-    #         lbs = np.array(list(map(lambda x: sorted(self.ldamodel.get_document_topics(x),
-    #                                                  key=lambda x: x[1], reverse=True)[0][0],
-    #                                 corpus)))
-    #     else:
-    #         lbs = self.cluster_model.predict(vec)
-    #     return lbs
 if __name__ == '__main__':
     path = "./data/All_Beauty_5.json"
-    meta = pd.read_json(path, lines=True)
+    data = pd.read_json(path, lines=True)
 
     count = 0
     index = []
-    for i in range(len(meta)):
+    for i in range(len(data)):
     #print(i)
-        if type(meta.iloc[i, 7]) == float:
+        if type(data.iloc[i, 7]) == float:
             count += 1
         else:
             index.append(i)
 
-    print(len(index), 'Paper have abstract available')
-    documents = meta.iloc[index, 7]
+    documents = data.iloc[index, 7]
     documents = documents.reset_index()
     documents.drop('index', inplace = True, axis = 1)
 
@@ -182,14 +172,13 @@ if __name__ == '__main__':
     method = "LDA_BERT"
     samp_size = 51000
     ntopic = 10
-    #def model(): #:if __name__ == '__main__':
-    tm = LDA_BERT(k = ntopic, method = method)
+    tm = LDA_BERT(k = ntopic, method = method, documents=documents)
+    # topic_to_words = []
+    # for i in range(ntopic):
+    #     cur_topic_words = [ele[0] for ele in tm.show_topic(i, ntopic)]
+    #     topic_to_words.append(cur_topic_words)
 
-    data = documents #pd.read_csv('/kaggle/working/train.csv')
-    data = data.fillna('')  # only the comments has NaN's
-    rws = data.reviewText
-    sentences, token_lists, idx_in = preprocess(rws, samp_size=samp_size)
 
-    tm.fit(sentences, token_lists)
-    print('Coherence:', tm.get_coherence(token_lists, 'c_v'))
-    print("===========================================================")
+    
+
+    
