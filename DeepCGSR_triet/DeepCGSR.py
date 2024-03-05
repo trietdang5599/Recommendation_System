@@ -5,11 +5,17 @@ import os
 from gensim import corpora
 from gensim.models import LdaModel
 from nltk.corpus import sentiwordnet as swn
+from nltk.parse.corenlp import CoreNLPDependencyParser
 from nltk.parse.stanford import StanfordDependencyParser
 import pandas as pd
 from gensim.models import word2vec, Word2Vec
+from sklearn.metrics import roc_auc_score
+import tqdm
 from utils import read_data, softmax, word_segment, preprocessed, sigmoid
 
+import nltk
+nltk.download('wordnet')
+nltk.download('sentiwordnet')
 
 #region Fine-gain
 # ============== fine-gain ================
@@ -37,6 +43,7 @@ def get_lda_mdoel(split_data, num_topics, num_words):
 
 class DependencyParser():
     def __init__(self, model_path, parser_path):
+        # self.model = CoreNLPDependencyParser(url='http://localhost:9000')
         self.model = StanfordDependencyParser(path_to_jar=parser_path, path_to_models_jar=model_path)
 
     def raw_parse(self, text):
@@ -166,13 +173,16 @@ def CreateAndWriteCSV(name, data):
 
         # Ghi dữ liệu từ từ điển vào file
         for key, value in data.items():
-            # Chuyển đổi mảng thành chuỗi có định dạng
-            array_str = str(value.tolist())
+            # Kiểm tra kiểu dữ liệu trước khi chuyển đổi
+            if isinstance(value, np.ndarray):
+                array_str = str(value.tolist())
+            else:
+                array_str = str(value)
             writer.writerow([key, array_str])
 
     print(f'File CSV "{filename}" đã được tạo và ghi thành công.')
 # Lấy dữ liệu của AB
-data = read_data("./data/raw/All_Beauty_5.json")
+data = read_data("./data/raw/All_Beauty_100reviews.json")
 data_df = pd.DataFrame(data)
 data_df.columns = ['reviewerID', 'asin', 'overall', 'reviewText']
 data = data_df["reviewText"].tolist()
@@ -236,12 +246,17 @@ def get_coarse_score(text, word2vec_model):
 # Lấy đặc trưng chi tiết và đặc trưng thô của reviewer và item rồi tổng hợp ra được theta_u và theta_i
 ErrorList = []
 reviewer_feature_dict = {}
-
-    
 item_feature_dict = {}
-def MergeFineCoarse_Item_Reviewer(data_df, reviewer_feature_dict, item_feature_dict):
+
+reviewer_feature_dict_coarse = {}
+item_feature_dict_coarse = {}
+
+def MergeFineCoarse_Reviewer(data_df, reviewer_feature_dict):
+    print("=========================Merge Reviews==========================")
     for reviewer_id, df in data_df.groupby("reviewerID"):
         review_text = df["reviewText"].tolist()
+        review_feature = 0
+        coarse_feature = 0
         for i, text in enumerate(review_text):
             try:
                 fine_feature = get_topic_sentiment_metrix(text, dictionary, lda_model, topic_to_words, dep_parser, topic_nums=num_topics) #Get score for each of related tocpic
@@ -255,13 +270,18 @@ def MergeFineCoarse_Item_Reviewer(data_df, reviewer_feature_dict, item_feature_d
                 print("Error: ", text)
                 ErrorList.append(text)
                 continue
+        reviewer_feature_dict_coarse[reviewer_id] = coarse_feature
         reviewer_feature_dict[reviewer_id] = review_feature
         print(review_feature)
 
-    print("===================================")
+        
+def MergeFineCoarse_Item(data_df, item_feature_dict):
     # 商品特征提取
+    print("=========================Merge Items==========================")
     for asin, df in data_df.groupby("asin"):
         review_text = df["reviewText"].tolist()
+        item_feature = 0 
+        coarse_feature = 0
         for i, text in enumerate(review_text):
             try:
                 fine_feature = get_topic_sentiment_metrix(text, dictionary, lda_model, topic_to_words, dep_parser, topic_nums=num_topics)
@@ -277,10 +297,10 @@ def MergeFineCoarse_Item_Reviewer(data_df, reviewer_feature_dict, item_feature_d
                 print("Error: ", text)
                 ErrorList.append(text)
                 continue
-            
-            
+        item_feature_dict_coarse[asin] = coarse_feature
         item_feature_dict[asin] = item_feature
         print(item_feature)
+
 def load_data_from_csv(file_path):
     data = {}
     with open(file_path, 'r') as csv_file:
@@ -302,22 +322,92 @@ def load_data_from_csv(file_path):
 #     print(item_feature_dict)
 #     CreateAndWriteCSV('item_feature', item_feature_dict)
 
-if os.path.exists("feature/review_feature.csv") and os.path.exists("feature/item_feature.csv"):
+if os.path.exists("feature/review_feature.csv"):
     reviewer_feature_dict = load_data_from_csv("feature/review_feature.csv")
-    item_feature_dict = load_data_from_csv("feature/item_feature.csv")
+    reviewer_feature_dict_coarse = load_data_from_csv("feature/review_feature_coarse.csv")
 else:
-    MergeFineCoarse_Item_Reviewer(data_df, reviewer_feature_dict, item_feature_dict)
+    MergeFineCoarse_Reviewer(data_df, reviewer_feature_dict)
     print(reviewer_feature_dict)
     CreateAndWriteCSV('review_feature', reviewer_feature_dict)
+    CreateAndWriteCSV('review_feature_coarse', reviewer_feature_dict_coarse)
+
+if os.path.exists("feature/item_feature.csv"):
+    item_feature_dict = load_data_from_csv("feature/item_feature.csv")
+    item_feature_dict_coarse = load_data_from_csv("feature/item_feature_coarse.csv")
+else:
+    MergeFineCoarse_Item(data_df, item_feature_dict)
     print(item_feature_dict)
     CreateAndWriteCSV('item_feature', item_feature_dict)
+    CreateAndWriteCSV('item_feature_coarse', item_feature_dict_coarse)
+ 
+ #===================================
+ 
 
 print(reviewer_feature_dict['A1118RD3AJD5KH'])
 #endregion
 
+#region visualize_feature_vectors and reduce outliers
+import pandas as pd
+import ast
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy.spatial import distance
+
+def visualize_feature_vectors(file_path):
+    # Đọc file CSV
+    df = pd.read_csv(file_path)
+
+    # Chuyển đổi chuỗi trong cột 'Array' thành list
+    df['Array'] = df['Array'].apply(ast.literal_eval)
+
+    # Lấy vector đặc trưng từ cột 'Array'
+    feature_vectors = df['Array'].tolist()
+    # Vector 0
+    zero_vector = [1.0] * 10
+    feature_distance = []
+    for item in feature_vectors:
+        cosine_distance = distance.cosine(item, zero_vector)
+        # print(cosine_distance)
+        feature_distance.append(cosine_distance)
+    # Biểu diễn lên boxplot sử dụng seaborn
+    print(len(feature_distance))
+    plt.figure(figsize=(10, 6))
+    sns.boxplot(data=feature_distance)
+    plt.title('Boxplot of Feature Vectors')
+    plt.xlabel('Feature Dimension')
+    plt.ylabel('Feature Value')
+
+    # Loại bỏ outliers
+    Q1 = np.percentile(feature_distance, 25, axis=0)
+    Q3 = np.percentile(feature_distance, 75, axis=0)
+    IQR = Q3 - Q1
+
+    lower_bound = Q1 - 1.5 * IQR
+    upper_bound = Q3 + 1.5 * IQR
+
+    # Lọc và loại bỏ outliers
+    filtered_feature_vectors = np.array(feature_distance)
+    filtered_feature_vectors[(feature_distance < lower_bound) | (feature_distance > upper_bound)] = np.nan
+    print(len(filtered_feature_vectors[(feature_distance < lower_bound) | (feature_distance > upper_bound)]))
+    # Biểu diễn boxplot của tập hợp đã lọc
+    plt.figure(figsize=(10, 6))
+    sns.boxplot(data=filtered_feature_vectors)
+    plt.title('Boxplot of Filtered Feature Vectors')
+    plt.xlabel('Feature Dimension')
+    plt.ylabel('Feature Value')
+
+    plt.show()
+
+# Thực hiện hàm với đường dẫn đến file CSV của bạn
+visualize_feature_vectors('feature_backup/review_feature.csv')  # Thay 'your_file.csv' bằng đường dẫn thực tế của file CSV của bạn
+visualize_feature_vectors('feature_backup/item_feature.csv')  # Thay 'your_file.csv' bằng đường dẫn thực tế của file CSV của bạn
+#endregion
+
 #=======================================================================
 
-#region Matrix Factorization
+
+#region SVDFeature
 import svd
 from svd import SVD
 import torch
@@ -337,7 +427,7 @@ emb_user,emb_item = svd.get_embedings()
 # print(emb_item)
 # print(emb_user.shape)
 print(np.sqrt(svd.cost(emb_user,emb_item)))
-#endregion
+
 
 review_feature_z = []
 item_feature_z = []
@@ -350,7 +440,9 @@ review_feature_z = torch.tensor(review_feature_z)
 item_feature_z = torch.tensor(item_feature_z)
 print(review_feature_z)
 print(item_feature_z)
+#endregion
 
+#region Matrix Factorization
 import numpy as np
 
 class FactorizationMachine(object):
@@ -464,10 +556,17 @@ from config import args
 from sklearn.metrics import roc_auc_score
 from data_process import ReviewAmazon
 from torch.utils.data import DataLoader
+from torchfm.model.fm import FactorizationMachineModel
 
 def get_dataset(name, path):
     if name == 'reviewAmazon':
         return ReviewAmazon(path)
+    
+def get_model(dataset):
+    field_dims = dataset.field_dims
+    print("dataset_shape: ", len(dataset))
+    return FactorizationMachineModel(field_dims, embed_dim=16)
+
 dataset = get_dataset(args.dataset_name, args.dataset_path)
 train_length = int(len(dataset) * 0.7)
 valid_length = int(len(dataset) * 0.1)
@@ -478,9 +577,10 @@ train_data_loader = DataLoader(train_dataset, batch_size=args.batch_size, num_wo
 valid_data_loader = DataLoader(valid_dataset, batch_size=args.batch_size, num_workers=8)
 test_data_loader = DataLoader(test_dataset, batch_size=args.batch_size, num_workers=8)
 
-# Train model
-model = FactorizationMachine(n_features=df.shape[1] - 1, n_factors=10)
-model = model.train_fm(model, X_train, y_train, n_epochs=100, learning_rate=0.01)
+# # Train model
+# model = get_model(dataset)
+# model = model.train_fm(model, X_train, y_train, n_epochs=100, learning_rate=0.01)
 
-# Đánh giá model
-auc = model.test()
+# # Đánh giá model
+# auc = model.test()
+#endregion
