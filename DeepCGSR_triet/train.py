@@ -3,7 +3,7 @@ import tqdm
 from config import args
 from sklearn.metrics import roc_auc_score
 from data_process import ReviewAmazon
-from DeepCGSR import review_feature_z, item_feature_z 
+# from DeepCGSR import review_feature_z, item_feature_z 
 from torch.utils.data import DataLoader
 from torchfm.dataset.movielens import MovieLens1MDataset, MovieLens20MDataset
 from torchfm.model.fm import FactorizationMachineModel
@@ -20,7 +20,7 @@ def get_dataset(name, path):
 def get_model(dataset):
     field_dims = dataset.field_dims
     print("dataset_shape: ", len(dataset))
-    return FactorizationMachineModel(field_dims, embed_dim=16)
+    return FactorizationMachineModel(field_dims, embed_dim=20)
 
 class EarlyStopper(object):
 
@@ -50,8 +50,6 @@ def train(model, optimizer, data_loader, criterion, device, log_interval=100):
     for i, (fields, target) in enumerate(tk0):
         fields, target = fields.to(device), target.to(device)
         y = model(fields)
-        print(y)
-        y = y + review_feature_z
         loss = criterion(y, target.float())
         model.zero_grad()
         loss.backward()
@@ -60,6 +58,7 @@ def train(model, optimizer, data_loader, criterion, device, log_interval=100):
         if (i + 1) % log_interval == 0:
             tk0.set_postfix(loss=total_loss / log_interval)
             total_loss = 0
+            
 
 
 def test(model, data_loader, device):
@@ -95,6 +94,7 @@ def main(dataset_name,
     valid_data_loader = DataLoader(valid_dataset, batch_size=batch_size, num_workers=8)
     test_data_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=8)
     model = get_model(dataset).to(device)
+    print(model.embedding.embedding.weight.data)
     criterion = torch.nn.BCELoss()
     optimizer = torch.optim.Adam(params=model.parameters(), lr=learning_rate, weight_decay=weight_decay)
     early_stopper = EarlyStopper(num_trials=10, save_path=f'{save_dir}/{model_name}.pt')

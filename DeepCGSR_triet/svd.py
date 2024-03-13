@@ -139,6 +139,8 @@ class SVD():
         index = self.items_id_dict[item_id]
         return self.emb_item[index,:]
 
+
+
 if __name__ == '__main__':
     # checkpoint_path = 'chkpt/svd.pt'
     # # Kiểm tra xem tệp checkpoint có tồn tại không

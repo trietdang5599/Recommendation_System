@@ -12,7 +12,7 @@ from gensim.models import word2vec, Word2Vec
 from sklearn.metrics import roc_auc_score
 import tqdm
 from utils import read_data, softmax, word_segment, preprocessed, sigmoid
-
+import torch
 import nltk
 nltk.download('wordnet')
 nltk.download('sentiwordnet')
@@ -322,18 +322,18 @@ def load_data_from_csv(file_path):
 #     print(item_feature_dict)
 #     CreateAndWriteCSV('item_feature', item_feature_dict)
 
-if os.path.exists("feature/review_feature.csv"):
-    reviewer_feature_dict = load_data_from_csv("feature/review_feature.csv")
-    reviewer_feature_dict_coarse = load_data_from_csv("feature/review_feature_coarse.csv")
+if os.path.exists("feature_backup/review_feature.csv"):
+    reviewer_feature_dict = load_data_from_csv("feature_backup/review_feature.csv")
+    # reviewer_feature_dict_coarse = load_data_from_csv("feature_backup/review_feature_coarse.csv")
 else:
     MergeFineCoarse_Reviewer(data_df, reviewer_feature_dict)
     print(reviewer_feature_dict)
     CreateAndWriteCSV('review_feature', reviewer_feature_dict)
     CreateAndWriteCSV('review_feature_coarse', reviewer_feature_dict_coarse)
 
-if os.path.exists("feature/item_feature.csv"):
-    item_feature_dict = load_data_from_csv("feature/item_feature.csv")
-    item_feature_dict_coarse = load_data_from_csv("feature/item_feature_coarse.csv")
+if os.path.exists("feature_backup/item_feature.csv"):
+    item_feature_dict = load_data_from_csv("feature_backup/item_feature.csv")
+    # item_feature_dict_coarse = load_data_from_csv("feature_backup/item_feature_coarse.csv")
 else:
     MergeFineCoarse_Item(data_df, item_feature_dict)
     print(item_feature_dict)
@@ -347,65 +347,72 @@ print(reviewer_feature_dict['A1118RD3AJD5KH'])
 #endregion
 
 #region visualize_feature_vectors and reduce outliers
-import pandas as pd
-import ast
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from scipy.spatial import distance
+# import pandas as pd
+# import ast
+# import numpy as np
+# import matplotlib.pyplot as plt
+# import seaborn as sns
+# from scipy.spatial import distance
 
-def visualize_feature_vectors(file_path):
-    # Đọc file CSV
-    df = pd.read_csv(file_path)
+# def visualize_feature_vectors(file_path):
+#     # Đọc file CSV
+#     df = pd.read_csv(file_path)
 
-    # Chuyển đổi chuỗi trong cột 'Array' thành list
-    df['Array'] = df['Array'].apply(ast.literal_eval)
+#     # Chuyển đổi chuỗi trong cột 'Array' thành list
+#     df['Array'] = df['Array'].apply(ast.literal_eval)
 
-    # Lấy vector đặc trưng từ cột 'Array'
-    feature_vectors = df['Array'].tolist()
-    # Vector 0
-    zero_vector = [1.0] * 10
-    feature_distance = []
-    for item in feature_vectors:
-        cosine_distance = distance.cosine(item, zero_vector)
-        # print(cosine_distance)
-        feature_distance.append(cosine_distance)
-    # Biểu diễn lên boxplot sử dụng seaborn
-    print(len(feature_distance))
-    plt.figure(figsize=(10, 6))
-    sns.boxplot(data=feature_distance)
-    plt.title('Boxplot of Feature Vectors')
-    plt.xlabel('Feature Dimension')
-    plt.ylabel('Feature Value')
+#     # Lấy vector đặc trưng từ cột 'Array'
+#     feature_vectors = df['Array'].tolist()
+#     # Vector 0
+#     zero_vector = [1.0] * 10
+#     feature_distance = []
+#     for item in feature_vectors:
+#         cosine_distance = distance.cosine(item, zero_vector)
+#         # print(cosine_distance)
+#         feature_distance.append(cosine_distance)
+#     # Biểu diễn lên boxplot sử dụng seaborn
+#     print(len(feature_distance))
+#     plt.figure(figsize=(10, 6))
+#     sns.boxplot(data=feature_distance)
+#     plt.title('Boxplot of Feature Vectors')
+#     plt.xlabel('Feature Dimension')
+#     plt.ylabel('Feature Value')
 
-    # Loại bỏ outliers
-    Q1 = np.percentile(feature_distance, 25, axis=0)
-    Q3 = np.percentile(feature_distance, 75, axis=0)
-    IQR = Q3 - Q1
+#     # Loại bỏ outliers
+#     Q1 = np.percentile(feature_distance, 25, axis=0)
+#     Q3 = np.percentile(feature_distance, 75, axis=0)
+#     IQR = Q3 - Q1
 
-    lower_bound = Q1 - 1.5 * IQR
-    upper_bound = Q3 + 1.5 * IQR
+#     lower_bound = Q1 - 1.5 * IQR
+#     upper_bound = Q3 + 1.5 * IQR
 
-    # Lọc và loại bỏ outliers
-    filtered_feature_vectors = np.array(feature_distance)
-    filtered_feature_vectors[(feature_distance < lower_bound) | (feature_distance > upper_bound)] = np.nan
-    print(len(filtered_feature_vectors[(feature_distance < lower_bound) | (feature_distance > upper_bound)]))
-    # Biểu diễn boxplot của tập hợp đã lọc
-    plt.figure(figsize=(10, 6))
-    sns.boxplot(data=filtered_feature_vectors)
-    plt.title('Boxplot of Filtered Feature Vectors')
-    plt.xlabel('Feature Dimension')
-    plt.ylabel('Feature Value')
+#     # Lọc và loại bỏ outliers
+#     filtered_feature_vectors = np.array(feature_distance)
+#     filtered_feature_vectors[(feature_distance < lower_bound) | (feature_distance > upper_bound)] = np.nan
+#     print(len(filtered_feature_vectors[(feature_distance < lower_bound) | (feature_distance > upper_bound)]))
+#     # Biểu diễn boxplot của tập hợp đã lọc
+#     plt.figure(figsize=(10, 6))
+#     sns.boxplot(data=filtered_feature_vectors)
+#     plt.title('Boxplot of Filtered Feature Vectors')
+#     plt.xlabel('Feature Dimension')
+#     plt.ylabel('Feature Value')
 
-    plt.show()
+#     plt.show()
 
-# Thực hiện hàm với đường dẫn đến file CSV của bạn
-visualize_feature_vectors('feature_backup/review_feature.csv')  # Thay 'your_file.csv' bằng đường dẫn thực tế của file CSV của bạn
-visualize_feature_vectors('feature_backup/item_feature.csv')  # Thay 'your_file.csv' bằng đường dẫn thực tế của file CSV của bạn
+# # Thực hiện hàm với đường dẫn đến file CSV của bạn
+# visualize_feature_vectors('feature_backup/review_feature.csv')  # Thay 'your_file.csv' bằng đường dẫn thực tế của file CSV của bạn
+# visualize_feature_vectors('feature_backup/item_feature.csv')  # Thay 'your_file.csv' bằng đường dẫn thực tế của file CSV của bạn
 #endregion
 
 #=======================================================================
 
+def direct_sum(A, B):
+    m, n = A.shape
+    p, q = B.shape
+    result = np.zeros((m+p, n+q), dtype=A.dtype)
+    result[:m, :n] = A
+    result[m:, n:] = B
+    return result
 
 #region SVDFeature
 import svd
@@ -425,21 +432,100 @@ else:
 emb_user,emb_item = svd.get_embedings()
 # print(emb_user)
 # print(emb_item)
-# print(emb_user.shape)
-print(np.sqrt(svd.cost(emb_user,emb_item)))
+print(emb_user.shape)
+print(emb_item.shape)
+# print(np.sqrt(svd.cost(emb_user,emb_item)))
+print(len(reviewer_feature_dict))
+print(len(item_feature_dict))
+# print(svd.get_user_embedding('AX0ZEGHH0H525').shape)
 
 
-review_feature_z = []
-item_feature_z = []
-for review in reviewer_feature_dict:
-    review_feature_z.append(reviewer_feature_dict[review] * svd.get_user_embedding(review))
-for item in item_feature_dict: 
-    item_feature_z.append(item_feature_dict[item] * svd.get_item_embedding(item))
+#=================================== Merge to z ======================================
+def read_csv_file(csv_file):
+    """
+    Đọc tập tin CSV với ID là một chuỗi và giá trị là một vector đặc trưng.
 
-review_feature_z = torch.tensor(review_feature_z)
-item_feature_z = torch.tensor(item_feature_z)
-print(review_feature_z)
-print(item_feature_z)
+    Args:
+    - csv_file: Đường dẫn đến tập tin CSV
+
+    Returns:
+    - keys: Danh sách các key (chuỗi)
+    - values: Danh sách các value (vector)
+    """
+    keys = []
+    values = []
+
+    with open(csv_file, 'r', encoding='utf-8') as file:
+        csv_reader = csv.reader(file)
+        next(csv_reader)  # Bỏ qua header
+        for row in csv_reader:
+            key = row[0]  # ID là cột đầu tiên
+            value_str = row[1]  # Giá trị là cột thứ hai
+            value = ast.literal_eval(value_str)  # Chuyển đổi chuỗi thành vector
+            keys.append(key)
+            values.append(np.array(value))
+
+    return keys, values
+    
+def mergeReview_Rating(path, filename, getEmbedding):
+    reviewerID,_ = read_csv_file(path)
+    feature_dict = {}
+    z_list = []
+    i = 0
+    for feature in reviewerID:
+        if getEmbedding == "reviewer":
+            A = reviewer_feature_dict[feature]
+            B = svd.get_user_embedding(feature)
+        else:
+            A = item_feature_dict[feature]
+            B = svd.get_item_embedding(feature)
+        z = np.concatenate((np.array(A), np.array(B)))
+        i = i + 1
+        feature_dict[feature] = z
+        z_list.append(z)
+    CreateAndWriteCSV(filename, feature_dict)
+    return z_list
+    
+    
+
+z_item = mergeReview_Rating("feature_backup/item_feature.csv", "z_item", "item")
+z_review = mergeReview_Rating("feature_backup/review_feature.csv", "z_reviewer", "reviewer")
+
+#==============================================================================
+
+#============================ Calulate U/I deep ===============================
+
+def Caculate_Deep(v, z):
+  """
+  Tính Udeep theo công thức trong hình.
+
+  Tham số:
+    v: List các giá trị v.
+    z: List các giá trị z.
+
+  Trả về:
+    Giá trị Udeep.
+  """
+  sum_v_z = sum([v_i * z_i for v_i, z_i in zip(v, z)])
+  sum_v2_z2 = sum([(v_i**2) * (z_i**2) for v_i, z_i in zip(v, z)])
+  return (1 / 2) * ((sum_v_z**2) - sum_v2_z2)
+#==============================================================================
+
+from train import *
+from config import args
+
+
+device = torch.device(args.device)
+dataset = get_dataset(args.dataset_name, args.dataset_path)
+model = get_model(dataset).to(device)
+v_list = np.array(model.embedding.embedding.weight.data.tolist())
+
+u_deep = Caculate_Deep(v_list, z_review)
+i_deep = Caculate_Deep(v_list, z_item)
+print(u_deep)
+print(i_deep)
+    
+    
 #endregion
 
 #region Matrix Factorization
