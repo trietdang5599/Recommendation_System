@@ -3,7 +3,7 @@ import tqdm
 from config import args
 from sklearn.metrics import roc_auc_score
 from data_process import ReviewAmazon
-# from DeepCGSR import review_feature_z, item_feature_z 
+# from DeepCGSR import *
 from torch.utils.data import DataLoader
 from torchfm.dataset.movielens import MovieLens1MDataset, MovieLens20MDataset
 from torchfm.model.fm import FactorizationMachineModel
@@ -44,12 +44,14 @@ class EarlyStopper(object):
 
 
 def train(model, optimizer, data_loader, criterion, device, log_interval=100):
+    model.add_module()
     model.train()
     total_loss = 0
     tk0 = tqdm.tqdm(data_loader, smoothing=0, mininterval=1.0)
     for i, (fields, target) in enumerate(tk0):
         fields, target = fields.to(device), target.to(device)
         y = model(fields)
+        print(model)
         loss = criterion(y, target.float())
         model.zero_grad()
         loss.backward()
@@ -68,6 +70,7 @@ def test(model, data_loader, device):
         for fields, target in tqdm.tqdm(data_loader, smoothing=0, mininterval=1.0):
             fields, target = fields.to(device), target.to(device)
             y = model(fields)
+            print(model.linear.fc.weight.data)
             targets.extend(target.tolist())
             predicts.extend(y.tolist())
     
@@ -94,10 +97,9 @@ def main(dataset_name,
     valid_data_loader = DataLoader(valid_dataset, batch_size=batch_size, num_workers=8)
     test_data_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=8)
     model = get_model(dataset).to(device)
-    print(model.embedding.embedding.weight.data)
     criterion = torch.nn.BCELoss()
     optimizer = torch.optim.Adam(params=model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-    early_stopper = EarlyStopper(num_trials=10, save_path=f'{save_dir}/{model_name}.pt')
+    early_stopper = EarlyStopper(num_trials=2, save_path=f'{save_dir}/{model_name}.pt')
     for epoch_i in range(epoch):
         train(model, optimizer, train_data_loader, criterion, device)
         auc = test(model, valid_data_loader, device)

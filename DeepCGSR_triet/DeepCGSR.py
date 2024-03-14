@@ -480,39 +480,53 @@ def mergeReview_Rating(path, filename, getEmbedding):
             A = item_feature_dict[feature]
             B = svd.get_item_embedding(feature)
         z = np.concatenate((np.array(A), np.array(B)))
+        # z = np.array(A) + np.array(B)
         i = i + 1
         feature_dict[feature] = z
+        # print(np.sum(z))
         z_list.append(z)
     CreateAndWriteCSV(filename, feature_dict)
-    return z_list
+    # return z_list
+    return feature_dict
     
     
 
 z_item = mergeReview_Rating("feature_backup/item_feature.csv", "z_item", "item")
 z_review = mergeReview_Rating("feature_backup/review_feature.csv", "z_reviewer", "reviewer")
 
+# print(z_review)
+
 #==============================================================================
 
 #============================ Calulate U/I deep ===============================
 
 def Caculate_Deep(v, z):
-  """
-  Tính Udeep theo công thức trong hình.
+    """
+    Tính Udeep theo công thức trong hình.
 
-  Tham số:
-    v: List các giá trị v.
-    z: List các giá trị z.
+    Tham số:
+        v: List các giá trị v.
+        z: List các giá trị z.
 
-  Trả về:
-    Giá trị Udeep.
-  """
-  sum_v_z = sum([v_i * z_i for v_i, z_i in zip(v, z)])
-  sum_v2_z2 = sum([(v_i**2) * (z_i**2) for v_i, z_i in zip(v, z)])
-  return (1 / 2) * ((sum_v_z**2) - sum_v2_z2)
+    Trả về:
+        Giá trị Udeep.
+    """
+    list_sum = {}
+    i = 0
+    for name, z_i in z.items():
+        if i < len(v):  # Đảm bảo vẫn còn phần tử trong danh sách v
+            v_i = v[i]
+            sum_v_z = v_i * z_i
+            sum_v2_z2 = (v_i**2) * (z_i**2)
+            result = (1 / 2) * ((sum_v_z)**2 - sum_v2_z2)
+            list_sum[name] = result
+    return list_sum
+
 #==============================================================================
 
 from train import *
 from config import args
+from data_process import *
 
 
 device = torch.device(args.device)
@@ -522,151 +536,313 @@ v_list = np.array(model.embedding.embedding.weight.data.tolist())
 
 u_deep = Caculate_Deep(v_list, z_review)
 i_deep = Caculate_Deep(v_list, z_item)
+CreateAndWriteCSV("u_deep", u_deep)
+CreateAndWriteCSV("i_deep", i_deep)
+TransformLabel_Deep(pd.read_csv("feature/u_deep.csv", sep=',', engine='c', header='infer').to_numpy()[:, :3], "transformed_udeep.csv")
+TransformLabel_Deep(pd.read_csv("feature/i_deep.csv", sep=',', engine='c', header='infer').to_numpy()[:, :3], "transformed_ideep.csv")
+
+def merge_csv_columns(csv_file1, id_column1, csv_file2, id_column2, value_column2, new_column):
+    # Đọc dữ liệu từ file CSV thứ hai và ánh xạ ID với giá trị
+    id_to_value = {}
+    with open(csv_file2, 'r', newline='') as csv_file:
+        csv_reader = csv.DictReader(csv_file)
+        for row in csv_reader:
+            id_value = row[id_column2]
+            value = row[value_column2]
+            id_to_value[id_value] = value
+
+    # Đọc dữ liệu từ file CSV đầu tiên và cập nhật dữ liệu trên đó
+    updated_rows = []
+    with open(csv_file1, 'r', newline='') as csv_file:
+        csv_reader = csv.DictReader(csv_file)
+        for row in csv_reader:
+            id_value = row[id_column1]
+            if id_value in id_to_value:
+                row[new_column] = id_to_value[id_value]
+            else:
+                row[new_column] = ''
+            updated_rows.append(row)
+
+    # Ghi dữ liệu đã cập nhật trở lại vào file CSV đầu tiên
+    with open(csv_file1, 'w', newline='') as csv_file:
+        fieldnames = updated_rows[0].keys()
+        csv_writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        csv_writer.writeheader()
+        csv_writer.writerows(updated_rows)
+
+
+# Sử dụng function merge_csv_columns
+merge_csv_columns('data/ratings_AB.csv', 'reviewerID', 'transformed_udeep.csv', 'ID', 'Array', 'Udeep')
+merge_csv_columns('data/ratings_AB.csv', 'asin', 'transformed_ideep.csv', 'ID', 'Array', 'Ideep')
+
 print(u_deep)
 print(i_deep)
+print(u_deep["AEL1DK2OJ41ZZ"]*i_deep["B00006L9LC"]*0.000009 + 4.762781186094069 + 1.0 + 3.0)
+# print(np.sum(u_deep*i_deep))
+#endregion
+
+# #region Matrix Factorization
+# import numpy as np
+
+# class FactorizationMachine(object):
+
+#     def __init__(self, n_features, n_factors):
+#         self.n_features = n_features
+#         self.n_factors = n_factors
+
+#         # W_0 là trọng số của term đại diện cho bias
+#         self.W_0 = np.zeros(1)
+
+#         # W_i là trọng số của các term đại diện cho các feature riêng lẻ
+#         self.W_i = np.zeros((n_features, n_factors))
+
+#         # V_ij là trọng số của các term đại diện cho các interaction giữa các feature
+#         self.V_ij = np.zeros((n_features, n_features, n_factors))
+
+#     def fit(self, X, y):
+#         """
+#         Fits the model to the given data.
+
+#         Args:
+#             X: The input data, a 2D NumPy array of shape (n_samples, n_features).
+#             y: The target values, a 1D NumPy array of shape (n_samples,).
+
+#         Returns:
+#             None
+#         """
+
+#         # Khởi tạo các biến cần thiết
+#         self.W_0 = np.zeros(1)
+#         self.W_i = np.zeros((self.n_features, self.n_factors))
+#         self.V_ij = np.zeros((self.n_features, self.n_features, self.n_factors))
+
+#         # Tính toán các gradient
+#         gradients = self.gradient(X, y)
+
+#         # Cập nhật các trọng số
+#         self.W_0 += gradients[0]
+#         self.W_i += gradients[1]
+#         self.V_ij += gradients[2]
+
+#     def predict(self, X):
+#         """
+#         Predicts the target values for the given data.
+
+#         Args:
+#             X: The input data, a 2D NumPy array of shape (n_samples, n_features).
+
+#         Returns:
+#             The predicted target values, a 1D NumPy array of shape (n_samples,).
+#         """
+
+#         # Tính toán output của model
+#         output = self.W_0
+#         for i in range(self.n_features):
+#             output += np.sum(self.W_i[i] * np.power(X[:, i], 2))
+#             for j in range(i + 1, self.n_features):
+#                 output += np.sum(self.V_ij[i, j] * X[:, i] * X[:, j])
+
+#         return output
+
+#     def gradient(self, X, y):
+#         """
+#         Calculates the gradients of the loss function with respect to the model parameters.
+
+#         Args:
+#             X: The input data, a 2D NumPy array of shape (n_samples, n_features).
+#             y: The target values, a 1D NumPy array of shape (n_samples,).
+
+#         Returns:
+#             The gradients, a 3D NumPy array of shape (3, n_features, n_factors).
+#         """
+
+#         # Tính toán output của model
+#         output = self.predict(X)
+
+#         # Tính toán các gradient
+#         gradients = np.zeros((3, self.n_features, self.n_factors))
+#         gradients[0] = (output - y).reshape((X.shape[0], 1))
+#         for i in range(self.n_features):
+#             gradients[1][i] = (output - y) * 2 * X[:, i].reshape((X.shape[0], 1))
+#             for j in range(i + 1, self.n_features):
+#                 gradients[2][i, j] = (output - y) * X[:, i] * X[:, j].reshape((X.shape[0], 1))
+
+#         return gradients
+#     def train_fm(model, X, y, n_epochs, learning_rate):
+#         for epoch in range(n_epochs):
+#             for i in range(X.shape[0]):
+#                 gradients = model.gradient(X[i], y[i])
+#                 model.W_0 += learning_rate * gradients[0]
+#                 model.W_i += learning_rate * gradients[1]
+#                 model.V_ij += learning_rate * gradients[2]
+
+#         return model
+#     def test(model, data_loader, device):
+#         model.eval()
+#         targets, predicts = list(), list()
+#         with torch.no_grad():
+#             for fields, target in tqdm.tqdm(data_loader, smoothing=0, mininterval=1.0):
+#                 fields, target = fields.to(device), target.to(device)
+#                 y = model(fields)
+#                 targets.extend(target.tolist())
+#                 predicts.extend(y.tolist())
+        
+#         return roc_auc_score(targets, predicts)
     
+# import torch
+# import tqdm
+# from config import args
+# from sklearn.metrics import roc_auc_score
+# from data_process import ReviewAmazon
+# from torch.utils.data import DataLoader
+# from torchfm.model.fm import FactorizationMachineModel
+
+# def get_dataset(name, path):
+#     if name == 'reviewAmazon':
+#         return ReviewAmazon(path)
+    
+# def get_model(dataset):
+#     field_dims = dataset.field_dims
+#     print("dataset_shape: ", len(dataset))
+#     return FactorizationMachineModel(field_dims, embed_dim=16)
+
+# dataset = get_dataset(args.dataset_name, args.dataset_path)
+# train_length = int(len(dataset) * 0.7)
+# valid_length = int(len(dataset) * 0.1)
+# test_length = len(dataset) - train_length - valid_length
+# train_dataset, valid_dataset, test_dataset = torch.utils.data.random_split(
+#     dataset, (train_length, valid_length, test_length))
+# train_data_loader = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=8)
+# valid_data_loader = DataLoader(valid_dataset, batch_size=args.batch_size, num_workers=8)
+# test_data_loader = DataLoader(test_dataset, batch_size=args.batch_size, num_workers=8)
+
+# # # Train model
+# # model = get_model(dataset)
+# # model = model.train_fm(model, X_train, y_train, n_epochs=100, learning_rate=0.01)
+
+# # # Đánh giá model
+# # auc = model.test()
+# #endregion
+
+
+#region group by id
+import json
+
+def group_by_ids(dataset):
+    reviewer_to_items = {}
+    item_to_reviewers = {}
+    
+    for review in dataset:
+        reviewer_id = review["reviewerID"]
+        asin_id = review["asin"]
+        
+        # Thêm reviewer_id vào danh sách các items của reviewer
+        if reviewer_id not in reviewer_to_items:
+            reviewer_to_items[reviewer_id] = []
+        reviewer_to_items[reviewer_id].append(asin_id)
+        
+        # Thêm asin_id vào danh sách các reviewers của item
+        if asin_id not in item_to_reviewers:
+            item_to_reviewers[asin_id] = []
+        item_to_reviewers[asin_id].append(reviewer_id)
+    
+    return reviewer_to_items, item_to_reviewers
+
+# Đọc dữ liệu từ tập dataset
+with open("data/All_Beauty_5.json") as f:
+    dataset = [json.loads(line) for line in f]
+
+# Gom nhóm theo reviewerID và asinID
+reviewer_to_items, item_to_reviewers = group_by_ids(dataset)
+
+# In kết quả
+print("Danh sách các items của mỗi reviewer:")
+print(len(reviewer_to_items))
+# for reviewer_id, items in reviewer_to_items.items():
+#     print(f"Reviewer ID: {reviewer_id}, Items: {items}")
+
+print(len(item_to_reviewers))
+print("\nDanh sách các reviewers của mỗi item:")
+# for asin_id, reviewers in item_to_reviewers.items():
+    # print(f"ASIN ID: {asin_id}, Reviewers: {reviewers}")
     
 #endregion
 
-#region Matrix Factorization
-import numpy as np
+#region get bias
+import json
 
-class FactorizationMachine(object):
+def average_rating_by_reviewer(reviewer_id, json_file):
+    """
+    Tính trung bình rating của các mục mà một người dùng đã đánh giá.
 
-    def __init__(self, n_features, n_factors):
-        self.n_features = n_features
-        self.n_factors = n_factors
+    Args:
+    - reviewer_id: ID của người dùng (reviewer).
+    - json_file: Đường dẫn đến tệp JSON chứa tập dữ liệu.
 
-        # W_0 là trọng số của term đại diện cho bias
-        self.W_0 = np.zeros(1)
+    Returns:
+    - Trung bình rating của các mục mà người dùng đã đánh giá.
+    """
+    total_rating = 0
+    count = 0
 
-        # W_i là trọng số của các term đại diện cho các feature riêng lẻ
-        self.W_i = np.zeros((n_features, n_factors))
+    with open(json_file) as f:
+        dataset = [json.loads(line) for line in f]
 
-        # V_ij là trọng số của các term đại diện cho các interaction giữa các feature
-        self.V_ij = np.zeros((n_features, n_features, n_factors))
+    for review in dataset:
+        if review['reviewerID'] == reviewer_id:
+            total_rating += review['overall']
+            count += 1
 
-    def fit(self, X, y):
-        """
-        Fits the model to the given data.
+    if count == 0:
+        return None  # Trường hợp không có đánh giá từ người dùng này
 
-        Args:
-            X: The input data, a 2D NumPy array of shape (n_samples, n_features).
-            y: The target values, a 1D NumPy array of shape (n_samples,).
+    average_rating = total_rating / count
+    return average_rating
 
-        Returns:
-            None
-        """
+    
 
-        # Khởi tạo các biến cần thiết
-        self.W_0 = np.zeros(1)
-        self.W_i = np.zeros((self.n_features, self.n_factors))
-        self.V_ij = np.zeros((self.n_features, self.n_features, self.n_factors))
+def average_rating_by_item(item_id, json_file):
+    """
+    Tính trung bình rating của một mục (item) dựa trên itemID.
 
-        # Tính toán các gradient
-        gradients = self.gradient(X, y)
+    Args:
+    - item_id: ID của mục (item) cần tính trung bình rating.
+    - json_file: Đường dẫn đến tệp JSON chứa tập dữ liệu.
 
-        # Cập nhật các trọng số
-        self.W_0 += gradients[0]
-        self.W_i += gradients[1]
-        self.V_ij += gradients[2]
+    Returns:
+    - Trung bình rating của mục (item) cần tính.
+    """
+    total_rating = 0
+    count = 0
 
-    def predict(self, X):
-        """
-        Predicts the target values for the given data.
-
-        Args:
-            X: The input data, a 2D NumPy array of shape (n_samples, n_features).
-
-        Returns:
-            The predicted target values, a 1D NumPy array of shape (n_samples,).
-        """
-
-        # Tính toán output của model
-        output = self.W_0
-        for i in range(self.n_features):
-            output += np.sum(self.W_i[i] * np.power(X[:, i], 2))
-            for j in range(i + 1, self.n_features):
-                output += np.sum(self.V_ij[i, j] * X[:, i] * X[:, j])
-
-        return output
-
-    def gradient(self, X, y):
-        """
-        Calculates the gradients of the loss function with respect to the model parameters.
-
-        Args:
-            X: The input data, a 2D NumPy array of shape (n_samples, n_features).
-            y: The target values, a 1D NumPy array of shape (n_samples,).
-
-        Returns:
-            The gradients, a 3D NumPy array of shape (3, n_features, n_factors).
-        """
-
-        # Tính toán output của model
-        output = self.predict(X)
-
-        # Tính toán các gradient
-        gradients = np.zeros((3, self.n_features, self.n_factors))
-        gradients[0] = (output - y).reshape((X.shape[0], 1))
-        for i in range(self.n_features):
-            gradients[1][i] = (output - y) * 2 * X[:, i].reshape((X.shape[0], 1))
-            for j in range(i + 1, self.n_features):
-                gradients[2][i, j] = (output - y) * X[:, i] * X[:, j].reshape((X.shape[0], 1))
-
-        return gradients
-    def train_fm(model, X, y, n_epochs, learning_rate):
-        for epoch in range(n_epochs):
-            for i in range(X.shape[0]):
-                gradients = model.gradient(X[i], y[i])
-                model.W_0 += learning_rate * gradients[0]
-                model.W_i += learning_rate * gradients[1]
-                model.V_ij += learning_rate * gradients[2]
-
-        return model
-    def test(model, data_loader, device):
-        model.eval()
-        targets, predicts = list(), list()
-        with torch.no_grad():
-            for fields, target in tqdm.tqdm(data_loader, smoothing=0, mininterval=1.0):
-                fields, target = fields.to(device), target.to(device)
-                y = model(fields)
-                targets.extend(target.tolist())
-                predicts.extend(y.tolist())
+    with open(json_file) as f:
+        dataset = [json.loads(line) for line in f]
         
-        return roc_auc_score(targets, predicts)
-    
-import torch
-import tqdm
-from config import args
-from sklearn.metrics import roc_auc_score
-from data_process import ReviewAmazon
-from torch.utils.data import DataLoader
-from torchfm.model.fm import FactorizationMachineModel
+    for review in dataset:
+        if review['asin'] == item_id:
+            total_rating += review['overall']
+            count += 1
 
-def get_dataset(name, path):
-    if name == 'reviewAmazon':
-        return ReviewAmazon(path)
-    
-def get_model(dataset):
-    field_dims = dataset.field_dims
-    print("dataset_shape: ", len(dataset))
-    return FactorizationMachineModel(field_dims, embed_dim=16)
+    if count == 0:
+        return None  # Trường hợp không có đánh giá cho mục này
 
-dataset = get_dataset(args.dataset_name, args.dataset_path)
-train_length = int(len(dataset) * 0.7)
-valid_length = int(len(dataset) * 0.1)
-test_length = len(dataset) - train_length - valid_length
-train_dataset, valid_dataset, test_dataset = torch.utils.data.random_split(
-    dataset, (train_length, valid_length, test_length))
-train_data_loader = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=8)
-valid_data_loader = DataLoader(valid_dataset, batch_size=args.batch_size, num_workers=8)
-test_data_loader = DataLoader(test_dataset, batch_size=args.batch_size, num_workers=8)
+    average_rating = total_rating / count
+    return average_rating
 
-# # Train model
-# model = get_model(dataset)
-# model = model.train_fm(model, X_train, y_train, n_epochs=100, learning_rate=0.01)
+# Sử dụng hàm để tính trung bình rating của một mục cụ thể
+json_file_path = "data/All_Beauty_5.json"
+item_id = "B00006L9LC"
+average_rating = average_rating_by_item(item_id, json_file_path)
+if average_rating is not None:
+    print(f"Trung bình rating của mục {item_id} là: {average_rating}")
+else:
+    print(f"Mục {item_id} chưa được đánh giá.")
 
-# # Đánh giá model
-# auc = model.test()
+reviewer_id = "AEL1DK2OJ41ZZ"
+average_rating = average_rating_by_reviewer(reviewer_id, json_file_path)
+if average_rating is not None:
+    print(f"Trung bình rating của người dùng {reviewer_id} là: {average_rating}")
+else:
+    print(f"Người dùng {reviewer_id} chưa đánh giá bất kỳ mục nào.")
+
 #endregion

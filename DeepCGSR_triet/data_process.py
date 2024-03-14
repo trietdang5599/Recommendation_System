@@ -59,7 +59,7 @@ def TransformLabel(data, csv_path):
   item = LabelEncoder()
   item.fit(data[:, 1])
   data[:, 1] = item.transform(data[:, 1])
-  selected_fields = ['reviewerID', 'asin', 'overall','unixReviewTime']
+  selected_fields = ['reviewerID', 'asin', 'overall']
   with open(csv_path, 'w', newline='') as csv_data:
     csv_writer = csv.writer(csv_data)
 
@@ -71,6 +71,35 @@ def TransformLabel(data, csv_path):
         csv_writer.writerow(item)
 
 
+def TransformLabel_Deep(data, csv_path):
+     # Khởi tạo LabelEncoder cho user
+    user_encoder = LabelEncoder()
+
+    # Lấy các giá trị reviewerID từ cột đầu tiên của data
+    reviewer_ids = data[:, 0]
+
+    # Fit và transform user
+    user_encoded = user_encoder.fit_transform(reviewer_ids)
+
+    # Thay thế cột reviewerID trong data bằng các giá trị đã được mã hóa
+    data[:, 0] = user_encoded
+
+    # Chọn các trường cần ghi vào CSV
+    selected_fields = ['ID', 'Array']
+
+    # with open(csv_path, 'r', newline='') as csv_file:
+    #     csv_reader = csv.DictReader(csv_file)
+    #     for row in csv_reader:
+    #       print(row["Array"])
+    with open(csv_path, 'w', newline='') as csv_data:
+        
+        csv_writer = csv.writer(csv_data)
+
+        # Ghi tiêu đề
+        csv_writer.writerow(selected_fields)
+
+        # Ghi dữ liệu từ data vào tệp CSV
+        csv_writer.writerows(data)
 
 class ReviewAmazon():
     
