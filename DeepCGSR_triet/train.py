@@ -44,14 +44,14 @@ class EarlyStopper(object):
 
 
 def train(model, optimizer, data_loader, criterion, device, log_interval=100):
-    model.add_module()
+    
     model.train()
     total_loss = 0
     tk0 = tqdm.tqdm(data_loader, smoothing=0, mininterval=1.0)
     for i, (fields, target) in enumerate(tk0):
         fields, target = fields.to(device), target.to(device)
         y = model(fields)
-        print(model)
+        # print(model)
         loss = criterion(y, target.float())
         model.zero_grad()
         loss.backward()
@@ -70,7 +70,7 @@ def test(model, data_loader, device):
         for fields, target in tqdm.tqdm(data_loader, smoothing=0, mininterval=1.0):
             fields, target = fields.to(device), target.to(device)
             y = model(fields)
-            print(model.linear.fc.weight.data)
+            # print(model.linear.fc.weight.data)
             targets.extend(target.tolist())
             predicts.extend(y.tolist())
     

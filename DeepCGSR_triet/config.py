@@ -9,7 +9,7 @@ class config:
     model_name='deepcgsr'
     epoch=100
     learning_rate=0.01
-    batch_size=200
+    batch_size=32
     weight_decay=1e-6
     device='cuda:0'
     save_dir='chkpt'
