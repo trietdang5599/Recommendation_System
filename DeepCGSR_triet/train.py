@@ -91,6 +91,9 @@ def main(dataset_name,
     train_length = int(len(dataset) * 0.7)
     valid_length = int(len(dataset) * 0.1)
     test_length = len(dataset) - train_length - valid_length
+    print("train_length: ", train_length)
+    print("valid_length: ", valid_length)
+    print("test_length: ", test_length)
     train_dataset, valid_dataset, test_dataset = torch.utils.data.random_split(
         dataset, (train_length, valid_length, test_length))
     train_data_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=8)

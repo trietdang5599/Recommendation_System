@@ -7,11 +7,14 @@ import scipy.sparse as sparse
 import torch
 
 class SVD():
-    def __init__(self):
-        self.data_path = 'data/All_Beauty_5.json.gz'
-        self.df = self.getDF()
+    def __init__(self, data_path):
+        # self.data_path = 'data/All_Beauty_5.json.gz'
+        # self.df = self.getDF()
+        
+        # self.data_path = 'feature/filteredFeatures.csv'
+        self.df = pd.read_csv(data_path)
         self.users = sorted(self.df['reviewerID'].unique()) # group by reviewerID --> count users
-        self.items = sorted(self.df['asin'].unique()) # group by asin --> count items
+        self.items = sorted(self.df['itemID'].unique()) # group by asin --> count items
 
         self.users_id_dict = {u:index for index,u in enumerate(self.users)}
         self.items_id_dict = {i:index for index,i in enumerate(self.items)}
@@ -24,7 +27,7 @@ class SVD():
         self.lmbda = 0.0002
         self.k = 10 # why?
         self.learning_rate = 0.01
-        self.iterations = 2000
+        self.iterations = 1000
         self.u_dim = len(self.users) #991
         self.i_dim = len(self.items) #85
 
@@ -46,9 +49,9 @@ class SVD():
 
     def init_ratings_matric(self):
         for item in self.df.itertuples():
-            r = item[1]
-            u = item[4]
-            i = item[5]
+            r = item[3]
+            u = item[1]
+            i = item[2]
             iu = self.users.index(u)
             ii = self.items.index(i)
             self.rows.append(iu)

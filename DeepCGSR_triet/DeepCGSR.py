@@ -159,6 +159,24 @@ def get_coarse_simtiment_score(text, word2vec_model):
 
 #region Init 
 #============== Init ===============
+def CreateAndWriteCSVByReviews(name, data):
+    if not os.path.exists("feature"):
+        os.makedirs("feature")
+    
+    filename = os.path.join("feature", name + '.csv')
+    # Mở file CSV để ghi
+    with open(filename, mode='w', newline='') as file:
+        writer = csv.writer(file)
+
+        # Ghi tiêu đề
+        writer.writerow(['Key','ReviewerID', 'ItemID', 'Array'])
+
+        # Ghi dữ liệu từ từ điển vào file
+        for key, value in data.items():
+            writer.writerow([key, value[0], value[1], value[2]])
+
+    print(f'File CSV "{filename}" đã được tạo và ghi thành công.')
+
 def CreateAndWriteCSV(name, data):
     if not os.path.exists("feature"):
         os.makedirs("feature")
@@ -182,7 +200,7 @@ def CreateAndWriteCSV(name, data):
 
     print(f'File CSV "{filename}" đã được tạo và ghi thành công.')
 # Lấy dữ liệu của AB
-data = read_data("./data/raw/All_Beauty_100reviews.json")
+data = read_data("./data/raw/All_Beauty_5.json")
 data_df = pd.DataFrame(data)
 data_df.columns = ['reviewerID', 'asin', 'overall', 'reviewText']
 data = data_df["reviewText"].tolist()
@@ -250,61 +268,54 @@ item_feature_dict = {}
 
 reviewer_feature_dict_coarse = {}
 item_feature_dict_coarse = {}
-allFeatureReview = {}
+allFeatureReview = pd.DataFrame(columns=['reviewerID', 'itemID', 'overall', 'unixReviewTime', 'fine_feature', 'coarse_feature'])
+rowList = []
 
-def MergeFineCoarse_Reviewer(data_df, reviewer_feature_dict):
-    print("=========================Merge Reviews==========================")
-    count = 0
-    for reviewer_id, df in data_df.groupby("reviewerID"):
-        review_text = df["reviewText"].tolist()
-        itemID = df["asin"].tolist()
-        review_feature = 0
-        coarse_feature = 0
-        for i, text in enumerate(review_text):
-            try:
-                fine_feature = get_topic_sentiment_metrix(text, dictionary, lda_model, topic_to_words, dep_parser, topic_nums=num_topics) #Get score for each of related tocpic
-                coarse_feature = get_coarse_score(text, word2vec_model)
-                print("[",i ,"]", "Fine_feature: ", fine_feature, " - Coarse_feature: ", coarse_feature)
-                allFeatureReview[i] = [reviewer_id, itemID, fine_feature, coarse_feature]
-                print(allFeatureReview[i])
-                if i == 0:
-                    review_feature = fine_feature * coarse_feature
-                else:
-                    review_feature += fine_feature * coarse_feature
-            except:
-                print("Error: ", text)
-                ErrorList.append(text)
-                continue
-        reviewer_feature_dict_coarse[reviewer_id] = coarse_feature
-        reviewer_feature_dict[reviewer_id] = review_feature
-        print(review_feature)
-
-        
-def MergeFineCoarse_Item(data_df, item_feature_dict):
+def ExtractReviewFeature(data_df):
     # 商品特征提取
     print("=========================Merge Items==========================")
     for asin, df in data_df.groupby("asin"):
         review_text = df["reviewText"].tolist()
-        item_feature = 0 
+        reviewerID = df["reviewerID"].tolist()
+        overall = df["overall"].tolist()
         coarse_feature = 0
         for i, text in enumerate(review_text):
             try:
                 fine_feature = get_topic_sentiment_metrix(text, dictionary, lda_model, topic_to_words, dep_parser, topic_nums=num_topics)
                 coarse_feature = get_coarse_score(text, word2vec_model)
-
                 print("[",i ,"]", "Fine_feature: ", fine_feature, " - Coarse_feature: ", coarse_feature)
-                
-                if i == 0:
-                    item_feature = fine_feature * coarse_feature
-                else:
-                    item_feature += fine_feature * coarse_feature
+                new_row = {'reviewerID':reviewerID[i], 'itemID':asin, 'overall': overall[i],
+                           'fine_feature':fine_feature, 'coarse_feature':coarse_feature}
+                rowList.append(new_row)
             except:
                 print("Error: ", text)
                 ErrorList.append(text)
                 continue
-        item_feature_dict_coarse[asin] = coarse_feature
-        item_feature_dict[asin] = item_feature
-        print(item_feature)
+    return pd.DataFrame(rowList, columns=['reviewerID', 'itemID', 'overall', 'fine_feature', 'coarse_feature'])
+        
+def MergeFineCoarseFeatures(data_df, groupBy="reviewerID"):
+    print("=========================Merge Features==========================")
+    feature_dict = {}
+    for id, df in data_df.groupby(groupBy):
+        count = 0
+        feature = np.zeros(10) # Khởi tạo vector đặc trưng
+        list_finefeature = df['fine_feature']
+        list_coarse_feature = df['coarse_feature']
+        for fine, coarse in zip(list_finefeature, list_coarse_feature):
+            try:
+                fine_feature = np.fromstring(fine.strip('[]'), dtype=float, sep=' ')
+                coarse_feature = float(coarse)
+                if count == 0:
+                    feature = fine_feature * coarse_feature
+                else:
+                    feature += fine_feature * coarse_feature
+                count += 1
+            except:
+                continue
+        feature_dict[id] = np.array(feature.tolist())  
+    return feature_dict
+
+
 
 def load_data_from_csv(file_path):
     data = {}
@@ -313,122 +324,123 @@ def load_data_from_csv(file_path):
         for row in csv_reader:
             key = row['Key']
             array_str = row['Array']
+            if array_str.startswith('[') and array_str.endswith(']'):
+                data[key] = np.array(eval(array_str))
+            else:
             # Chuyển chuỗi thành mảng Python
-            array = np.array(ast.literal_eval(array_str))
-            data[key] = array
+                array = np.array(ast.literal_eval(array_str))
+                data[key] = array
     return data
-# if os.path.exists("feature/review_feature.csv") and os.path.exists("feature/item_feature.csv"):
-#     reviewer_feature_dict = load_data_from_csv("feature/review_feature.csv")
-#     item_feature_dict = load_data_from_csv("feature/item_feature.csv")
-# else:
-#     MergeFineCoarse_Item_Reviewer(data_df, reviewer_feature_dict, item_feature_dict)
-#     print(reviewer_feature_dict)
-#     CreateAndWriteCSV('review_feature', reviewer_feature_dict)
-#     print(item_feature_dict)
-#     CreateAndWriteCSV('item_feature', item_feature_dict)
 
-if os.path.exists("feature_backup/review_feature.csv"):
-    reviewer_feature_dict = load_data_from_csv("feature/review_feature.csv")
+
+if os.path.exists("./feature/allFeatureReview.csv"):
+    allFeatureReview = pd.read_csv("./feature/allFeatureReview.csv")
     # reviewer_feature_dict_coarse = load_data_from_csv("feature_backup/review_feature_coarse.csv")
 else:
-    MergeFineCoarse_Reviewer(data_df, reviewer_feature_dict)
-    print(reviewer_feature_dict)
-    CreateAndWriteCSV('review_feature', reviewer_feature_dict)
-    CreateAndWriteCSV('review_feature_coarse', reviewer_feature_dict_coarse)
-
-if os.path.exists("feature_backup/item_feature.csv"):
-    item_feature_dict = load_data_from_csv("feature/item_feature.csv")
-    # item_feature_dict_coarse = load_data_from_csv("feature_backup/item_feature_coarse.csv")
-else:
-    MergeFineCoarse_Item(data_df, item_feature_dict)
-    print(item_feature_dict)
-    CreateAndWriteCSV('item_feature', item_feature_dict)
-    CreateAndWriteCSV('item_feature_coarse', item_feature_dict_coarse)
+    allFeatureReview = ExtractReviewFeature(data_df)
+    allFeatureReview.to_csv('./feature/allFeatureReview.csv', index=False)
     
-print(allFeatureReview)
+# print(allFeatureReview)
+
+
+
+
+
+# Hàm chuyển đổi chuỗi thành list các số thực
+def string_to_list(string):
+    string = string.strip('[]')  # Loại bỏ ký tự '[' và ']' ở đầu và cuối chuỗi
+    if string:
+        return [float(x.strip()) for x in string.split(',')]
+    else:
+        return []
+
+averageVectorbyItem = {}
+
+def AverageVector():
+    data_df = pd.read_csv("./feature/allFeatureReview.csv")
+    
+    data_df.columns = ['ReviewerID', 'itemID', 'overall', 'fine_feature', 'coarse_feature']
+    averageVector = np.zeros(10)
+    for key, value in data_df.groupby('itemID'):
+        # Chuyển đổi kiểu dữ liệu của 'fine_feature' từ chuỗi sang mảng numpy số thực
+        value['fine_feature'] = value['fine_feature'].apply(lambda x: np.fromstring(x.strip('[]'), dtype=float, sep=' '))
+        
+        # Chuyển đổi kiểu dữ liệu của 'coarse_feature' từ chuỗi sang số thực
+        value['coarse_feature'] = value['coarse_feature'].apply(lambda x: float(x))
+        
+        # Thực hiện phép nhân giữa 'fine_feature' và 'coarse_feature'
+        list_feature = [np.multiply(a, b) for a, b in zip(value['fine_feature'], value['coarse_feature'])]
+        
+        # Tính vector trung bình
+        averageVector = np.mean(list_feature, axis=0)
+        averageVectorbyItem[key] = averageVector.tolist()
+    # print("average: ", averageVectorbyItem)
+    CreateAndWriteCSV('averageVectorbyItem', averageVectorbyItem)
+AverageVector()
  #===================================
- 
+import pandas as pd
+import ast
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy.spatial import distance
 
-print(reviewer_feature_dict['A1118RD3AJD5KH'])
-#endregion
+filteredFeatures = pd.DataFrame(columns=['reviewerID', 'itemID', 'overall', 'fine_feature', 'coarse_feature'])
 
-#region visualize_feature_vectors and reduce outliers
-# import pandas as pd
-# import ast
-# import numpy as np
-# import matplotlib.pyplot as plt
-# import seaborn as sns
-# from scipy.spatial import distance
+def remove_outliers(filepath, listAverageVector):
+    # Đọc dữ liệu từ file CSV
+    data = pd.read_csv(filepath)
+    result =pd.DataFrame(columns=['reviewerID', 'itemID', 'overall', 'fine_feature', 'coarse_feature'])
+    for itemID, df in data.groupby('itemID'):
+        list_finefeature = df['fine_feature']
+        list_coarse_feature = df['coarse_feature']
+        feature_distance = []
+        normalize_vector = listAverageVector[itemID]
+        for fine, coarse in zip(list_finefeature, list_coarse_feature):
+            fine_feature = np.fromstring(fine.strip('[]'), dtype=float, sep=' ')
+            coarse_feature = float(coarse)
+            feature = fine_feature * coarse_feature
+            
+            cosine_distance = distance.cosine(feature, normalize_vector)
+            feature_distance.append(cosine_distance)
+        Q1 = np.percentile(feature_distance, 25, axis=0)
+        Q3 = np.percentile(feature_distance, 75, axis=0)
+        IQR = Q3 - Q1
 
-# def read_csv_to_dict(file_path):
-#     data_dict = {}
-#     with open(file_path, 'r', newline='') as file:
-#         csv_reader = csv.reader(file)
-#         for row in csv_reader:
-#             try:
-#                 if len(row) >= 2:
-#                     key = row[0]
-#                     value = ast.literal_eval(row[1])  # Chuyển đổi chuỗi thành list
-#                     data_dict[key] = value
-#             except Exception as e:
-#                 print(f"Error reading line: {row}. Error: {e}")
-#     return data_dict
+        lower_bound = Q1 - 1.5 * IQR
+        upper_bound = Q3 + 1.5 * IQR
+        # Tạo mảng boolean cho việc loại bỏ ngoại lai
+        outliers_mask = np.array([lower_bound <= x <= upper_bound for x in feature_distance])
+        # Loại bỏ các giá trị ngoại lai
+        df.drop(df[~outliers_mask].index, inplace=True)
+        # Thêm vào result
+        result = pd.concat([result, df], axis=0, ignore_index=True)
+    return result
+filteredFeatures = remove_outliers('./feature/allFeatureReview.csv', averageVectorbyItem)
+filteredFeatures.to_csv('feature/filteredFeatures.csv', index=False)
 
 
-# def visualize_feature_vectors(file_path):
-#     # Đọc file CSV
-#     feature_dict = read_csv_to_dict(file_path)
+
+if os.path.exists("./feature/reviewer_feature.csv"):
+    reviewer_feature_dict = load_data_from_csv("./feature/reviewer_feature.csv")
+else:
+    # use filtered data
+    # reviewer_feature_dict = MergeFineCoarseFeatures(filteredFeatures, groupBy="reviewerID")
+    # use all data
+    reviewer_feature_dict = MergeFineCoarseFeatures(allFeatureReview, groupBy="reviewerID")
+    CreateAndWriteCSV('reviewer_feature', reviewer_feature_dict)
     
+if os.path.exists("./feature/item_feature.csv"):
+    item_feature_dict = load_data_from_csv("./feature/item_feature.csv")
+else:
+    # use filtered data
+    # item_feature_dict = MergeFineCoarseFeatures(filteredFeatures, groupBy="itemID")
+    # use all data
+    item_feature_dict = MergeFineCoarseFeatures(allFeatureReview, groupBy="itemID")
+    CreateAndWriteCSV('item_feature', item_feature_dict)
 
-#     # Chuyển đổi chuỗi trong cột 'Array' thành list
-#     # df['Array'] = df['Array'].apply(ast.literal_eval)
-
-#     # Lấy vector đặc trưng từ cột 'Array'
-#     # feature_vectors = df['Array'].tolist()
-#     # Vector 0
-#     zero_vector = [1.0] * 10
-#     feature_distance = []
-#     for key, value in feature_dict.items():
-#         cosine_distance = distance.cosine(value, zero_vector)
-#         feature_distance.append(cosine_distance)
-#     # Biểu diễn lên boxplot sử dụng seaborn
-#     print(len(feature_distance))
-#     # plt.figure(figsize=(10, 6))
-#     # sns.boxplot(data=feature_distance)
-#     # plt.title('Boxplot of Feature Vectors')
-#     # plt.xlabel('Feature Dimension')
-#     # plt.ylabel('Feature Value')
-
-#     # Loại bỏ outliers
-#     Q1 = np.percentile(feature_distance, 25, axis=0)
-#     Q3 = np.percentile(feature_distance, 75, axis=0)
-#     IQR = Q3 - Q1
-
-#     lower_bound = Q1 - 1.5 * IQR
-#     upper_bound = Q3 + 1.5 * IQR
-
-#     # Lọc và loại bỏ outliers
-#     filtered_feature_vectors = np.array(feature_distance)
-#     filtered_feature_vectors[(feature_distance < lower_bound) | (feature_distance > upper_bound)] = np.nan
-    
-#     filtered_feature_dict = {key: value for key, value in feature_dict.items() if lower_bound <= distance.cosine(value, zero_vector) <= upper_bound}
-#     print(len(filtered_feature_dict))
-#     # Biểu diễn boxplot của tập hợp đã lọc
-#     # plt.figure(figsize=(10, 6))
-#     # sns.boxplot(data=filtered_feature_vectors)
-#     # plt.title('Boxplot of Filtered Feature Vectors')
-#     # plt.xlabel('Feature Dimension')
-#     # plt.ylabel('Feature Value')
-
-#     # plt.show()
-#     return filtered_feature_dict
-
-# # Thực hiện hàm với đường dẫn đến file CSV của bạn
-# reviewer_feature_dict = visualize_feature_vectors('feature_backup/review_feature.csv')  # Thay 'your_file.csv' bằng đường dẫn thực tế của file CSV của bạn
-# item_feature_dict = visualize_feature_vectors('feature_backup/item_feature.csv')  # Thay 'your_file.csv' bằng đường dẫn thực tế của file CSV của bạn
-
-# CreateAndWriteCSV('review_feature', reviewer_feature_dict)
-# CreateAndWriteCSV('item_feature', item_feature_dict)
+# print(reviewer_feature_dict)
+# print(item_feature_dict)
 #endregion
 
 #=======================================================================
@@ -453,14 +465,15 @@ if os.path.exists(checkpoint_path):
     svd = torch.load(checkpoint_path)
     
 else:
-    svd = SVD()
+    svd = SVD('feature/allFeatureReview.csv')
+    # svd.data_path = 'feature/allFeatureReview.csv'
     svd.train() 
     torch.save(svd, checkpoint_path)
 emb_user,emb_item = svd.get_embedings()
 # print(emb_user)
 # print(emb_item)
-print(emb_user.shape)
-print(emb_item.shape)
+# print(emb_user.shape)
+# print(emb_item.shape)
 # print(np.sqrt(svd.cost(emb_user,emb_item)))
 print(len(reviewer_feature_dict))
 print(len(item_feature_dict))
@@ -498,16 +511,17 @@ def mergeReview_Rating(path, filename, getEmbedding):
     reviewerID,_ = read_csv_file(path)
     feature_dict = {}
     z_list = []
-    for feature in reviewerID:
+    for id in reviewerID:
         if getEmbedding == "reviewer":
-            A = reviewer_feature_dict[feature]
-            B = svd.get_user_embedding(feature)
+            A = reviewer_feature_dict[id]
+            B = svd.get_user_embedding(id)
         else:
-            A = item_feature_dict[feature]
-            B = svd.get_item_embedding(feature)
+            A = item_feature_dict[id]
+            B = svd.get_item_embedding(id)
+
         z = np.concatenate((np.array(A), np.array(B)))
         # z = np.array(A) + np.array(B)
-        feature_dict[feature] = z
+        feature_dict[id] = z
         # print(np.sum(z))
         z_list.append(z)
     CreateAndWriteCSV(filename, feature_dict)
@@ -517,13 +531,11 @@ def mergeReview_Rating(path, filename, getEmbedding):
     
 
 # z_item = mergeReview_Rating("feature_backup/item_feature.csv", "z_item", "item")
-# z_review = mergeReview_Rating("feature_backup/review_feature.csv", "z_reviewer", "reviewer")
-z_item = mergeReview_Rating("feature_backup/item_feature.csv", "z_item", "item")
-z_review = mergeReview_Rating("feature_backup/review_feature.csv", "z_reviewer", "reviewer")
-# print(z_item)
-# print(z_review)
-
-# print(z_review)
+# z_review = mergeReview_Rating("feature/review_feature.csv", "z_reviewer", "reviewer")
+z_item = mergeReview_Rating("feature/item_feature.csv", "z_item", "item")
+z_review = mergeReview_Rating("feature/reviewer_feature.csv", "z_reviewer", "reviewer")
+# print("z_item: ",z_item)
+# print("z_review: ", z_review)
 
 #==============================================================================
 
@@ -599,271 +611,8 @@ def merge_csv_columns(csv_file1, id_column1, csv_file2, id_column2, value_column
 
 
 # Sử dụng function merge_csv_columns
-merge_csv_columns('data/ratings_AB.csv', 'reviewerID', 'transformed_udeep.csv', 'ID', 'Array', 'Udeep')
-merge_csv_columns('data/ratings_AB.csv', 'asin', 'transformed_ideep.csv', 'ID', 'Array', 'Ideep')
+merge_csv_columns('data/ratings_AB.csv', 'reviewerID', 'feature/u_deep.csv', 'Key', 'Array', 'Udeep')
+merge_csv_columns('data/ratings_AB.csv', 'itemID', 'feature/i_deep.csv', 'Key', 'Array', 'Ideep')
 
 #endregion
 
-
-# import numpy as np
-
-# class FactorizationMachine(object):
-
-#     def __init__(self, n_features, n_factors):
-#         self.n_features = n_features
-#         self.n_factors = n_factors
-
-#         # W_0 là trọng số của term đại diện cho bias
-#         self.W_0 = np.zeros(1)
-
-#         # W_i là trọng số của các term đại diện cho các feature riêng lẻ
-#         self.W_i = np.zeros((n_features, n_factors))
-
-#         # V_ij là trọng số của các term đại diện cho các interaction giữa các feature
-#         self.V_ij = np.zeros((n_features, n_features, n_factors))
-
-#     def fit(self, X, y):
-#         """
-#         Fits the model to the given data.
-
-#         Args:
-#             X: The input data, a 2D NumPy array of shape (n_samples, n_features).
-#             y: The target values, a 1D NumPy array of shape (n_samples,).
-
-#         Returns:
-#             None
-#         """
-
-#         # Khởi tạo các biến cần thiết
-#         self.W_0 = np.zeros(1)
-#         self.W_i = np.zeros((self.n_features, self.n_factors))
-#         self.V_ij = np.zeros((self.n_features, self.n_features, self.n_factors))
-
-#         # Tính toán các gradient
-#         gradients = self.gradient(X, y)
-
-#         # Cập nhật các trọng số
-#         self.W_0 += gradients[0]
-#         self.W_i += gradients[1]
-#         self.V_ij += gradients[2]
-
-#     def predict(self, X):
-#         """
-#         Predicts the target values for the given data.
-
-#         Args:
-#             X: The input data, a 2D NumPy array of shape (n_samples, n_features).
-
-#         Returns:
-#             The predicted target values, a 1D NumPy array of shape (n_samples,).
-#         """
-
-#         # Tính toán output của model
-#         output = self.W_0
-#         for i in range(self.n_features):
-#             output += np.sum(self.W_i[i] * np.power(X[:, i], 2))
-#             for j in range(i + 1, self.n_features):
-#                 output += np.sum(self.V_ij[i, j] * X[:, i] * X[:, j])
-
-#         return output
-
-#     def gradient(self, X, y):
-#         """
-#         Calculates the gradients of the loss function with respect to the model parameters.
-
-#         Args:
-#             X: The input data, a 2D NumPy array of shape (n_samples, n_features).
-#             y: The target values, a 1D NumPy array of shape (n_samples,).
-
-#         Returns:
-#             The gradients, a 3D NumPy array of shape (3, n_features, n_factors).
-#         """
-
-#         # Tính toán output của model
-#         output = self.predict(X)
-
-#         # Tính toán các gradient
-#         gradients = np.zeros((3, self.n_features, self.n_factors))
-#         gradients[0] = (output - y).reshape((X.shape[0], 1))
-#         for i in range(self.n_features):
-#             gradients[1][i] = (output - y) * 2 * X[:, i].reshape((X.shape[0], 1))
-#             for j in range(i + 1, self.n_features):
-#                 gradients[2][i, j] = (output - y) * X[:, i] * X[:, j].reshape((X.shape[0], 1))
-
-#         return gradients
-#     def train_fm(model, X, y, n_epochs, learning_rate):
-#         for epoch in range(n_epochs):
-#             for i in range(X.shape[0]):
-#                 gradients = model.gradient(X[i], y[i])
-#                 model.W_0 += learning_rate * gradients[0]
-#                 model.W_i += learning_rate * gradients[1]
-#                 model.V_ij += learning_rate * gradients[2]
-
-#         return model
-#     def test(model, data_loader, device):
-#         model.eval()
-#         targets, predicts = list(), list()
-#         with torch.no_grad():
-#             for fields, target in tqdm.tqdm(data_loader, smoothing=0, mininterval=1.0):
-#                 fields, target = fields.to(device), target.to(device)
-#                 y = model(fields)
-#                 targets.extend(target.tolist())
-#                 predicts.extend(y.tolist())
-        
-#         return roc_auc_score(targets, predicts)
-    
-# import torch
-# import tqdm
-# from config import args
-# from sklearn.metrics import roc_auc_score
-# from data_process import ReviewAmazon
-# from torch.utils.data import DataLoader
-# from torchfm.model.fm import FactorizationMachineModel
-
-# def get_dataset(name, path):
-#     if name == 'reviewAmazon':
-#         return ReviewAmazon(path)
-    
-# def get_model(dataset):
-#     field_dims = dataset.field_dims
-#     print("dataset_shape: ", len(dataset))
-#     return FactorizationMachineModel(field_dims, embed_dim=16)
-
-# dataset = get_dataset(args.dataset_name, args.dataset_path)
-# train_length = int(len(dataset) * 0.7)
-# valid_length = int(len(dataset) * 0.1)
-# test_length = len(dataset) - train_length - valid_length
-# train_dataset, valid_dataset, test_dataset = torch.utils.data.random_split(
-#     dataset, (train_length, valid_length, test_length))
-# train_data_loader = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=8)
-# valid_data_loader = DataLoader(valid_dataset, batch_size=args.batch_size, num_workers=8)
-# test_data_loader = DataLoader(test_dataset, batch_size=args.batch_size, num_workers=8)
-
-# # # Train model
-# # model = get_model(dataset)
-# # model = model.train_fm(model, X_train, y_train, n_epochs=100, learning_rate=0.01)
-
-# # # Đánh giá model
-# # auc = model.test()
-# #endregion
-
-
-# region group by id
-# import json
-
-# def group_by_ids(dataset):
-#     reviewer_to_items = {}
-#     item_to_reviewers = {}
-    
-#     for review in dataset:
-#         reviewer_id = review["reviewerID"]
-#         asin_id = review["asin"]
-        
-#         # Thêm reviewer_id vào danh sách các items của reviewer
-#         if reviewer_id not in reviewer_to_items:
-#             reviewer_to_items[reviewer_id] = []
-#         reviewer_to_items[reviewer_id].append(asin_id)
-        
-#         # Thêm asin_id vào danh sách các reviewers của item
-#         if asin_id not in item_to_reviewers:
-#             item_to_reviewers[asin_id] = []
-#         item_to_reviewers[asin_id].append(reviewer_id)
-    
-#     return reviewer_to_items, item_to_reviewers
-
-# # Đọc dữ liệu từ tập dataset
-# with open("data/All_Beauty_5.json") as f:
-#     dataset = [json.loads(line) for line in f]
-
-# # Gom nhóm theo reviewerID và asinID
-# reviewer_to_items, item_to_reviewers = group_by_ids(dataset)
-
-# # In kết quả
-# print("Danh sách các items của mỗi reviewer:")
-# print(len(reviewer_to_items))
-# # for reviewer_id, items in reviewer_to_items.items():
-# #     print(f"Reviewer ID: {reviewer_id}, Items: {items}")
-
-# print(len(item_to_reviewers))
-# print("\nDanh sách các reviewers của mỗi item:")
-# # for asin_id, reviewers in item_to_reviewers.items():
-#     # print(f"ASIN ID: {asin_id}, Reviewers: {reviewers}")
-    
-#endregion
-
-#region get bias
-# import json
-
-# def average_rating_by_reviewer(reviewer_id, json_file):
-#     """
-#     Tính trung bình rating của các mục mà một người dùng đã đánh giá.
-
-#     Args:
-#     - reviewer_id: ID của người dùng (reviewer).
-#     - json_file: Đường dẫn đến tệp JSON chứa tập dữ liệu.
-
-#     Returns:
-#     - Trung bình rating của các mục mà người dùng đã đánh giá.
-#     """
-#     total_rating = 0
-#     count = 0
-
-#     with open(json_file) as f:
-#         dataset = [json.loads(line) for line in f]
-
-#     for review in dataset:
-#         if review['reviewerID'] == reviewer_id:
-#             total_rating += review['overall']
-#             count += 1
-
-#     if count == 0:
-#         return None  # Trường hợp không có đánh giá từ người dùng này
-
-#     average_rating = total_rating / count
-#     return average_rating 
-
-# def average_rating_by_item(item_id, json_file):
-#     """
-#     Tính trung bình rating của một mục (item) dựa trên itemID.
-
-#     Args:
-#     - item_id: ID của mục (item) cần tính trung bình rating.
-#     - json_file: Đường dẫn đến tệp JSON chứa tập dữ liệu.
-
-#     Returns:
-#     - Trung bình rating của mục (item) cần tính.
-#     """
-#     total_rating = 0
-#     count = 0
-
-#     with open(json_file) as f:
-#         dataset = [json.loads(line) for line in f]
-        
-#     for review in dataset:
-#         if review['asin'] == item_id:
-#             total_rating += review['overall']
-#             count += 1
-
-#     if count == 0:
-#         return None  # Trường hợp không có đánh giá cho mục này
-
-#     average_rating = total_rating / count
-#     return average_rating
-
-# # Sử dụng hàm để tính trung bình rating của một mục cụ thể
-# json_file_path = "data/All_Beauty_5.json"
-# item_id = "B00006L9LC"
-# average_rating = average_rating_by_item(item_id, json_file_path)
-# if average_rating is not None:
-#     print(f"Trung bình rating của mục {item_id} là: {average_rating}")
-# else:
-#     print(f"Mục {item_id} chưa được đánh giá.")
-
-# reviewer_id = "AEL1DK2OJ41ZZ"
-# average_rating = average_rating_by_reviewer(reviewer_id, json_file_path)
-# if average_rating is not None:
-#     print(f"Trung bình rating của người dùng {reviewer_id} là: {average_rating}")
-# else:
-#     print(f"Người dùng {reviewer_id} chưa đánh giá bất kỳ mục nào.")
-
-#endregion

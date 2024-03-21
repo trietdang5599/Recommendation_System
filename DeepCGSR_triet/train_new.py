@@ -61,7 +61,7 @@ class FullyConnectedModel(nn.Module):
 
 def reprocess_input(data):
     user_idx = [int(x) for x in data['reviewerID']]
-    item_idx = [int(x) for x in data['asin']]
+    item_idx = [int(x) for x in data['itemID']]
     rating = [float(x) for x in data['overall']]
     list_udeep = []
     for item in data['Udeep']:
@@ -81,7 +81,7 @@ def reprocess_input(data):
 
 def load_data(csv_file):
     merge_csv_columns('data/ratings_AB.csv', 'reviewerID', 'transformed_udeep.csv', 'ID', 'Array', 'Udeep')
-    merge_csv_columns('data/ratings_AB.csv', 'asin', 'transformed_ideep.csv', 'ID', 'Array', 'Ideep')
+    merge_csv_columns('data/ratings_AB.csv', 'itemID', 'transformed_ideep.csv', 'ID', 'Array', 'Ideep')
     count = 0
     data = []
     with open(csv_file, 'r', newline='') as file:
@@ -149,7 +149,8 @@ def test(model, data_loader, device):
             y = model(user_idx, item_idx, udeep, ideep)
             targets.extend(target)
             predicts.extend([round(float(pred)) for pred in y.flatten().cpu().numpy()])
-
+    # print(targets)
+    # print(predicts)
     accuracy = accuracy_score(targets, predicts)
     return accuracy
 
@@ -223,9 +224,9 @@ for epoch_i in range(epoch):
         print(f'validation: best auc: {early_stopper.best_accuracy}')
         
         break
-auc = test(model, test_data_loader, device)
-print(f'test auc: {auc}')
-# rsme = test_rsme(model, test_data_loader, device)
-# print(f'test rsme:', {rsme})
-print(f'test rsme:', {rsme/count})
+auc_test = test(model, test_data_loader, device)
+print(f'test auc: {auc_test}')
+rsme_test = test_rsme(model, test_data_loader, device)
+print(f'test rsme:', {rsme_test})
+print(f'average validate rsme:', {rsme/count})
 

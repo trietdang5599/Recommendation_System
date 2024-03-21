@@ -59,7 +59,7 @@ def TransformLabel(data, csv_path):
   item = LabelEncoder()
   item.fit(data[:, 1])
   data[:, 1] = item.transform(data[:, 1])
-  selected_fields = ['reviewerID', 'asin', 'overall']
+  selected_fields = ['reviewerID', 'itemID', 'overall']
   with open(csv_path, 'w', newline='') as csv_data:
     csv_writer = csv.writer(csv_data)
 
@@ -104,9 +104,16 @@ def TransformLabel_Deep(data, csv_path):
 class ReviewAmazon():
     
   def __init__(self, dataset_path, sep=',', engine='c', header='infer'):
-    SeperateData(dataset_path)
-
-    data = pd.read_csv(dataset_path, sep=sep, engine=engine, header=header).to_numpy()[:, :3]
+    # SeperateData(dataset_path)
+    # data = pd.read_csv(dataset_path, sep=sep, engine=engine, header=header).to_numpy()[:, :3]
+    # data = pd.read_csv("./feature/filteredFeatures.csv", sep=sep, engine=engine, header=header,
+    #                    usecols=['reviewerID', 'itemID', 'overall']).to_numpy()[:, :3]
+    data = pd.read_csv("./feature/allFeatureReview.csv", sep=sep, engine=engine, header=header,
+                       usecols=['reviewerID', 'itemID', 'overall']).to_numpy()[:, :3]
+    
+    # data.columns = ['ReviewerID', 'ItemID', 'overall']
+    # print(data.head())
+    print("====================================")
     # if os.path.exists(dataset_path) == False:
     TransformLabel(data, dataset_path)
     self.items = data[:, :2].astype(np.int)  # -1 because ID begins from 1
