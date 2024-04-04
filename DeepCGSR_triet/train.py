@@ -15,7 +15,7 @@ def get_dataset(name, path):
     elif name == 'movielens20M':
         return MovieLens20MDataset(path)
     elif name == 'reviewAmazon':
-        return ReviewAmazon(path)
+        return ReviewAmazon(data_path=args.data_path,dataset_path=path)
 
 def get_model(dataset):
     field_dims = dataset.field_dims

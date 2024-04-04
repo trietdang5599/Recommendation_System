@@ -10,6 +10,8 @@ import csv
 import ast
 import torch.nn as nn
 import torch.optim as optim
+import openpyxl
+import os
 
 class EarlyStopper(object):
 
@@ -58,6 +60,30 @@ class FullyConnectedModel(nn.Module):
         # prediction = self.sigmoid(prediction.squeeze(0))
         
         return prediction.squeeze()
+
+def save_to_excel(values, headers, filename):
+    # Kiểm tra xem tệp đã tồn tại hay không
+    if os.path.exists(filename):
+        workbook = openpyxl.load_workbook(filename)
+        sheet = workbook.active
+        start_row = sheet.max_row  # Bắt đầu từ hàng tiếp theo
+    else:
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        start_row = 1  # Bắt đầu từ hàng đầu tiên
+
+        # Ghi header cho từng cột nếu tệp chưa tồn tại
+        for index, header in enumerate(headers, start=1):
+            sheet.cell(row=1, column=index, value=header)
+
+    # Append các giá trị (đã làm tròn) vào các hàng tiếp theo
+    for row_index, row_values in enumerate(values, start=start_row + 1):
+        for col_index, value in enumerate(row_values, start=1):
+            sheet.cell(row=row_index, column=col_index, value=round(value, 4))
+
+    # Lưu workbook vào tệp Excel
+    workbook.save(filename)
+    print(f"Đã lưu danh sách giá trị vào tệp '{filename}' thành công.")
 
 def reprocess_input(data):
     user_idx = [int(x) for x in data['reviewerID']]
@@ -189,44 +215,49 @@ num_features = 20  # This should match the size of your U_deep and I_deep featur
 batch_size = 32
 epoch = 10
 device='cuda:0'
+for i in range(10):
+    dataset = load_data('data/ratings_AB.csv')
+    # train_loader = DataLoader(dataset, batch_size, shuffle=True)
+    train_length = int(len(dataset) * 0.7)
+    valid_length = int(len(dataset) * 0.1)
+    test_length = len(dataset) - train_length - valid_length
+    print(train_length, valid_length, test_length)
+    train_dataset, valid_dataset, test_dataset = torch.utils.data.random_split(
+            dataset, (train_length, valid_length, test_length))
+    train_data_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=8)
+    valid_data_loader = DataLoader(valid_dataset, batch_size=batch_size, num_workers=8)
+    test_data_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=8)
+    # Initialize the model
+    model = FullyConnectedModel(batch_size, output_dim=20)
 
+    # Loss function and optimizer
+    criterion = nn.MSELoss()
+    optimizer = optim.Adam(model.parameters(), lr=0.01)
+    filename = 'triet_deepcgsr'
+    early_stopper = EarlyStopper(num_trials=3, save_path=f'{args.save_dir}/{filename}.pt')
+    rsme = 0
+    count = 0
+    for epoch_i in range(epoch):
+        train(model, optimizer, train_data_loader, criterion, device)
+        auc = test(model, valid_data_loader, device)
+        print('epoch:', epoch_i, 'validation: auc:', auc)
+        rsme = rsme + test_rsme(model, valid_data_loader, device)
+        print('epoch:', epoch_i, 'validation: rsme:', rsme)
+        count = count + 1
+        if not early_stopper.is_continuable(model, auc):
+            print(f'validation: best auc: {early_stopper.best_accuracy}')
+            
+            break
 
-
-dataset = load_data('data/ratings_AB.csv')
-# train_loader = DataLoader(dataset, batch_size, shuffle=True)
-train_length = int(len(dataset) * 0.7)
-valid_length = int(len(dataset) * 0.1)
-test_length = len(dataset) - train_length - valid_length
-print(train_length, valid_length, test_length)
-train_dataset, valid_dataset, test_dataset = torch.utils.data.random_split(
-        dataset, (train_length, valid_length, test_length))
-train_data_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=8)
-valid_data_loader = DataLoader(valid_dataset, batch_size=batch_size, num_workers=8)
-test_data_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=8)
-# Initialize the model
-model = FullyConnectedModel(batch_size, output_dim=20)
-
-# Loss function and optimizer
-criterion = nn.MSELoss()
-optimizer = optim.Adam(model.parameters(), lr=0.01)
-filename = 'triet_deepcgsr'
-early_stopper = EarlyStopper(num_trials=3, save_path=f'{args.save_dir}/{filename}.pt')
-rsme = 0
-count = 0
-for epoch_i in range(epoch):
-    train(model, optimizer, train_data_loader, criterion, device)
-    auc = test(model, valid_data_loader, device)
-    print('epoch:', epoch_i, 'validation: auc:', auc)
-    rsme = rsme + test_rsme(model, valid_data_loader, device)
-    print('epoch:', epoch_i, 'validation: rsme:', rsme)
-    count = count + 1
-    if not early_stopper.is_continuable(model, auc):
-        print(f'validation: best auc: {early_stopper.best_accuracy}')
-        
-        break
-auc_test = test(model, test_data_loader, device)
-print(f'test auc: {auc_test}')
-rsme_test = test_rsme(model, test_data_loader, device)
-print(f'test rsme:', {rsme_test})
-print(f'average validate rsme:', {rsme/count})
+    print('epoch:', i, 'validation: rsme:', rsme/count)
+    auc_test = test(model, test_data_loader, device)
+    print(f'test auc: {auc_test}')
+    rsme_test = test_rsme(model, test_data_loader, device)
+    print(f'test rsme:', {rsme_test})
+    print(f'average validate rsme:', {rsme/count})
+    results = [auc_test, rsme_test, (rsme/count)]
+    if args.isRemoveOutliner:
+        save_to_excel([results], ['AUC', 'RSME', 'Average RSME'], 'results_outliner.xlsx')
+    else:
+        save_to_excel([results], ['AUC', 'RSME', 'Average RSME'], 'results_allReviews.xlsx')
 

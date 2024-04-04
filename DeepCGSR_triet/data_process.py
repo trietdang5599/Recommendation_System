@@ -23,35 +23,6 @@ df = getDF('data/All_Beauty_5.json.gz')
 # print(df.head())
 # print(df.iloc[0])
 
-
-
-def SeperateData(csv_path):
-  #Đường dẫn đến tệp JSON đầu vào
-  json_file = 'data/All_Beauty_5.json.gz'
-
-
-  # Mở tệp JSON và tạo tệp CSV
-  with gzip.open(json_file, 'rb') as json_data:
-      data = [json.loads(line) for line in json_data]
-
-
-  # Chọn các trường dữ liệu (cột) mà bạn muốn ghi vào tệp CSV (3/5 trường)
-  selected_fields = ['reviewerID', 'asin', 'overall','unixReviewTime']
-
-  # Ghi dữ liệu vào tệp CSV
-  with open(csv_path, 'w', newline='') as csv_data:
-      csv_writer = csv.writer(csv_data)
-
-      # Ghi tiêu đề
-      csv_writer.writerow(selected_fields)
-
-      # Ghi dữ liệu từ tệp JSON vào tệp CSV
-      for item in data:
-          row = [item[field] for field in selected_fields]
-          csv_writer.writerow(row)
-
-  print(f'Dữ liệu đã được ghi vào "{csv_path}" trong thư mục "data".')
-
 def TransformLabel(data, csv_path):
   user = LabelEncoder()
   user.fit(data[:, 0])
@@ -103,13 +74,13 @@ def TransformLabel_Deep(data, csv_path):
 
 class ReviewAmazon():
     
-  def __init__(self, dataset_path, sep=',', engine='c', header='infer'):
+  def __init__(self, data_path, dataset_path, sep=',', engine='c', header='infer'):
     # SeperateData(dataset_path)
     # data = pd.read_csv(dataset_path, sep=sep, engine=engine, header=header).to_numpy()[:, :3]
-    # data = pd.read_csv("./feature/filteredFeatures.csv", sep=sep, engine=engine, header=header,
-    #                    usecols=['reviewerID', 'itemID', 'overall']).to_numpy()[:, :3]
-    data = pd.read_csv("./feature/allFeatureReview.csv", sep=sep, engine=engine, header=header,
+    data = pd.read_csv(data_path, sep=sep, engine=engine, header=header,
                        usecols=['reviewerID', 'itemID', 'overall']).to_numpy()[:, :3]
+    # data = pd.read_csv("./feature/allFeatureReview.csv", sep=sep, engine=engine, header=header,
+    #                    usecols=['reviewerID', 'itemID', 'overall']).to_numpy()[:, :3]
     
     # data.columns = ['ReviewerID', 'ItemID', 'overall']
     # print(data.head())

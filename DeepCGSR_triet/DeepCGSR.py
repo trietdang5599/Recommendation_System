@@ -14,8 +14,11 @@ import tqdm
 from utils import read_data, softmax, word_segment, preprocessed, sigmoid
 import torch
 import nltk
-nltk.download('wordnet')
-nltk.download('sentiwordnet')
+from config import args
+# nltk.download('wordnet')
+# nltk.download('sentiwordnet')
+
+isRemoveOutliner = args.isRemoveOutliner
 
 #region Fine-gain
 # ============== fine-gain ================
@@ -247,7 +250,7 @@ word2vec_model = get_word2vec_model(is_train=is_train,
 def get_coarse_score(text, word2vec_model):
     """获取粗粒度评分
     """
-    sim_word, sim_word_weight = get_coarse_simtiment_score(data[1], word2vec_model)
+    sim_word, sim_word_weight = get_coarse_simtiment_score(text, word2vec_model)
     score = 0
     for i, j in zip(sim_word, sim_word_weight):
         score += get_word_sentiment_score(i) * j
@@ -257,7 +260,12 @@ def get_coarse_score(text, word2vec_model):
 
 #================= End Init ===============
 #endregion
+import re
 
+def remove_special_characters(text):
+    # Sử dụng biểu thức chính quy để loại bỏ các ký tự đặc biệt
+    cleaned_text = re.sub(r'[^a-zA-Z0-9\s]', '', text)
+    return cleaned_text
 
 # Cac feature co the am vi la danh gia tieu cuc
 # 3. 粗细粒度融合
@@ -281,6 +289,7 @@ def ExtractReviewFeature(data_df):
         coarse_feature = 0
         for i, text in enumerate(review_text):
             try:
+                text = remove_special_characters(text)
                 fine_feature = get_topic_sentiment_metrix(text, dictionary, lda_model, topic_to_words, dep_parser, topic_nums=num_topics)
                 coarse_feature = get_coarse_score(text, word2vec_model)
                 print("[",i ,"]", "Fine_feature: ", fine_feature, " - Coarse_feature: ", coarse_feature)
@@ -354,6 +363,15 @@ def string_to_list(string):
     else:
         return []
 
+
+ #region remove outliner
+import pandas as pd
+import ast
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy.spatial import distance
+
 averageVectorbyItem = {}
 
 def AverageVector():
@@ -377,13 +395,6 @@ def AverageVector():
     # print("average: ", averageVectorbyItem)
     CreateAndWriteCSV('averageVectorbyItem', averageVectorbyItem)
 AverageVector()
- #===================================
-import pandas as pd
-import ast
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from scipy.spatial import distance
 
 filteredFeatures = pd.DataFrame(columns=['reviewerID', 'itemID', 'overall', 'fine_feature', 'coarse_feature'])
 
@@ -419,30 +430,33 @@ def remove_outliers(filepath, listAverageVector):
 filteredFeatures = remove_outliers('./feature/allFeatureReview.csv', averageVectorbyItem)
 filteredFeatures.to_csv('feature/filteredFeatures.csv', index=False)
 
+# print(reviewer_feature_dict)
+# print(item_feature_dict)
+#endregion
 
-
+#region mergeReviewFeatures
 if os.path.exists("./feature/reviewer_feature.csv"):
     reviewer_feature_dict = load_data_from_csv("./feature/reviewer_feature.csv")
 else:
-    # use filtered data
-    # reviewer_feature_dict = MergeFineCoarseFeatures(filteredFeatures, groupBy="reviewerID")
-    # use all data
-    reviewer_feature_dict = MergeFineCoarseFeatures(allFeatureReview, groupBy="reviewerID")
+    if isRemoveOutliner:
+        # use filtered data
+        reviewer_feature_dict = MergeFineCoarseFeatures(filteredFeatures, groupBy="reviewerID")
+    else:
+        # use filtered data
+        reviewer_feature_dict = MergeFineCoarseFeatures(allFeatureReview, groupBy="reviewerID")
     CreateAndWriteCSV('reviewer_feature', reviewer_feature_dict)
     
 if os.path.exists("./feature/item_feature.csv"):
     item_feature_dict = load_data_from_csv("./feature/item_feature.csv")
 else:
-    # use filtered data
-    # item_feature_dict = MergeFineCoarseFeatures(filteredFeatures, groupBy="itemID")
-    # use all data
-    item_feature_dict = MergeFineCoarseFeatures(allFeatureReview, groupBy="itemID")
+    if isRemoveOutliner:
+        # use filtered data
+        item_feature_dict = MergeFineCoarseFeatures(filteredFeatures, groupBy="itemID")
+    else:
+        # use all data
+        item_feature_dict = MergeFineCoarseFeatures(allFeatureReview, groupBy="itemID")
     CreateAndWriteCSV('item_feature', item_feature_dict)
-
-# print(reviewer_feature_dict)
-# print(item_feature_dict)
 #endregion
-
 #=======================================================================
 
 def direct_sum(A, B):
@@ -465,7 +479,10 @@ if os.path.exists(checkpoint_path):
     svd = torch.load(checkpoint_path)
     
 else:
-    svd = SVD('feature/allFeatureReview.csv')
+    if isRemoveOutliner:
+        svd = SVD('feature/filteredFeatures.csv')
+    else:
+        svd = SVD('feature/allFeatureReview.csv')
     # svd.data_path = 'feature/allFeatureReview.csv'
     svd.train() 
     torch.save(svd, checkpoint_path)
@@ -527,11 +544,7 @@ def mergeReview_Rating(path, filename, getEmbedding):
     CreateAndWriteCSV(filename, feature_dict)
     # return z_list
     return feature_dict
-    
-    
-
-# z_item = mergeReview_Rating("feature_backup/item_feature.csv", "z_item", "item")
-# z_review = mergeReview_Rating("feature/review_feature.csv", "z_reviewer", "reviewer")
+ 
 z_item = mergeReview_Rating("feature/item_feature.csv", "z_item", "item")
 z_review = mergeReview_Rating("feature/reviewer_feature.csv", "z_reviewer", "reviewer")
 # print("z_item: ",z_item)
@@ -541,27 +554,31 @@ z_review = mergeReview_Rating("feature/reviewer_feature.csv", "z_reviewer", "rev
 
 #============================ Calulate U/I deep ===============================
 
+
 def Caculate_Deep(v, z):
-    """
-    Tính Udeep theo công thức trong hình.
-
-    Tham số:
-        v: List các giá trị v.
-        z: List các giá trị z.
-
-    Trả về:
-        Giá trị Udeep.
-    """
-    list_sum = {}
+    list_deep = {}
     i = 0
     for name, z_i in z.items():
-        if i < len(v):  # Đảm bảo vẫn còn phần tử trong danh sách v
-            v_i = v[i]
-            sum_v_z = v_i * z_i
-            sum_v2_z2 = (v_i**2) * (z_i**2)
-            result = (1 / 2) * ((sum_v_z)**2 - sum_v2_z2)
-            list_sum[name] = result
-    return list_sum
+                # Convert numpy array to torch tensor
+        v_tensor = torch.tensor(v[i], dtype=torch.float32)
+        z_i_tensor = torch.tensor(z_i, dtype=torch.float32)
+
+        # Compute the sum of the product of feature values and their corresponding latent vectors
+        Vx = v_tensor * z_i_tensor.unsqueeze(1)  # Element-wise multiplication to scale latent vectors by the feature value
+
+        sum_Vx = torch.sum(Vx, dim=1)  # Sum over features for each factor
+
+        # Compute the square of the sums
+        sum_Vx_squared = sum_Vx ** 2
+
+        # Compute the sum of squares of the latent vectors themselves
+        sum_squared_Vx = torch.sum(Vx ** 2, dim=1)
+
+        # Calculate U_deep according to the FM transformation
+        U_deep = 0.5 * (sum_Vx_squared - sum_squared_Vx)
+        list_deep[name] = U_deep
+        i += 1
+    return list_deep
 
 #==============================================================================
 
