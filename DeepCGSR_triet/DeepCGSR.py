@@ -371,8 +371,31 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.spatial import distance
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+import umap.umap_ as umap
 
 averageVectorbyItem = {}
+
+
+
+def reduce_dimensionality(matrix, method='pca', n_components=1):
+    if method == 'pca':
+        pca = PCA(n_components=n_components)
+        reduced_matrix = pca.fit_transform(matrix)
+    elif method == 'tsne':
+        tsne = TSNE(n_components=n_components)
+        reduced_matrix = tsne.fit_transform(matrix)
+    elif method == 'umap':
+        reducer = umap.UMAP(n_components=n_components)
+        reduced_matrix = reducer.fit_transform(matrix)
+    else:
+        raise ValueError("Invalid method. Choose from 'pca', 'tsne', or 'umap'.")
+    return reduced_matrix.reshape(1, -1)
+
+def list_to_matrix(vector_list):
+    matrix = np.vstack(vector_list)
+    return matrix
 
 def AverageVector():
     data_df = pd.read_csv("./feature/allFeatureReview.csv")
@@ -390,7 +413,11 @@ def AverageVector():
         list_feature = [np.multiply(a, b) for a, b in zip(value['fine_feature'], value['coarse_feature'])]
         
         # Tính vector trung bình
-        averageVector = np.mean(list_feature, axis=0)
+        # averageVector = np.mean(list_feature, axis=0)
+        
+        maxtrix_feature = list_to_matrix(list_feature)
+        # print("maxtrix: ", maxtrix_feature)
+        averageVector = reduce_dimensionality(maxtrix_feature, method='umap', n_components=1)
         averageVectorbyItem[key] = averageVector.tolist()
     # print("average: ", averageVectorbyItem)
     CreateAndWriteCSV('averageVectorbyItem', averageVectorbyItem)
