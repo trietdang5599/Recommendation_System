@@ -203,7 +203,7 @@ def CreateAndWriteCSV(name, data):
 
     print(f'File CSV "{filename}" đã được tạo và ghi thành công.')
 # Lấy dữ liệu của AB
-data = read_data("./data/raw/All_Beauty_5.json")
+data = read_data("./data/raw/All_Beauty_Filtered.json")
 data_df = pd.DataFrame(data)
 data_df.columns = ['reviewerID', 'asin', 'overall', 'reviewText']
 data = data_df["reviewText"].tolist()
@@ -289,6 +289,7 @@ def ExtractReviewFeature(data_df):
         coarse_feature = 0
         for i, text in enumerate(review_text):
             try:
+                text = text[:500]
                 text = remove_special_characters(text)
                 fine_feature = get_topic_sentiment_metrix(text, dictionary, lda_model, topic_to_words, dep_parser, topic_nums=num_topics)
                 coarse_feature = get_coarse_score(text, word2vec_model)
@@ -379,19 +380,19 @@ averageVectorbyItem = {}
 
 
 
-def reduce_dimensionality(matrix, method='pca', n_components=1):
-    if method == 'pca':
-        pca = PCA(n_components=n_components)
-        reduced_matrix = pca.fit_transform(matrix)
-    elif method == 'tsne':
-        tsne = TSNE(n_components=n_components)
-        reduced_matrix = tsne.fit_transform(matrix)
-    elif method == 'umap':
-        reducer = umap.UMAP(n_components=n_components)
-        reduced_matrix = reducer.fit_transform(matrix)
-    else:
-        raise ValueError("Invalid method. Choose from 'pca', 'tsne', or 'umap'.")
-    return reduced_matrix.reshape(1, -1)
+# def reduce_dimensionality(matrix, method='pca', n_components=1):
+#     if method == 'pca':
+#         pca = PCA(n_components=n_components)
+#         reduced_matrix = pca.fit_transform(matrix)
+#     elif method == 'tsne':
+#         tsne = TSNE(n_components=n_components)
+#         reduced_matrix = tsne.fit_transform(matrix)
+#     elif method == 'umap':
+#         reducer = umap.UMAP(n_components=n_components)
+#         reduced_matrix = reducer.fit_transform(matrix)
+#     else:
+#         raise ValueError("Invalid method. Choose from 'pca', 'tsne', or 'umap'.")
+#     return reduced_matrix.reshape(1, -1)
 
 def list_to_matrix(vector_list):
     matrix = np.vstack(vector_list)
@@ -417,7 +418,7 @@ def AverageVector():
         
         maxtrix_feature = list_to_matrix(list_feature)
         # print("maxtrix: ", maxtrix_feature)
-        averageVector = reduce_dimensionality(maxtrix_feature, method='umap', n_components=1)
+        # averageVector = reduce_dimensionality(maxtrix_feature, method='umap', n_components=1)
         averageVectorbyItem[key] = averageVector.tolist()
     # print("average: ", averageVectorbyItem)
     CreateAndWriteCSV('averageVectorbyItem', averageVectorbyItem)
@@ -614,9 +615,10 @@ from config import args
 from data_process import *
 
 
-device = torch.device(args.device)
+# device = torch.device(args.device)
 dataset = get_dataset(args.dataset_name, args.dataset_path)
-model = get_model(dataset).to(device)
+# model = get_model(dataset).to(device)
+model = get_model(dataset)
 v_list = np.array(model.embedding.embedding.weight.data.tolist())
 
 u_deep = Caculate_Deep(v_list, z_review)

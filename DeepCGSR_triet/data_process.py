@@ -19,7 +19,8 @@ def getDF(path):
     i += 1
   return pd.DataFrame.from_dict(df, orient='index')
 
-df = getDF('data/All_Beauty_5.json.gz')
+# df = getDF('data/All_Beauty_5.json.gz')
+df = getDF('data/All_Beauty_Filtered.json.gz')
 # print(df.head())
 # print(df.iloc[0])
 
