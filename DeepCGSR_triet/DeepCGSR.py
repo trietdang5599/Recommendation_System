@@ -289,16 +289,16 @@ def ExtractReviewFeature(data_df):
         coarse_feature = 0
         for i, text in enumerate(review_text):
             try:
-                text = text[:500]
-                text = remove_special_characters(text)
+                # text = text[:500]
+                # text = remove_special_characters(text)
                 fine_feature = get_topic_sentiment_metrix(text, dictionary, lda_model, topic_to_words, dep_parser, topic_nums=num_topics)
                 coarse_feature = get_coarse_score(text, word2vec_model)
                 print("[",i ,"]", "Fine_feature: ", fine_feature, " - Coarse_feature: ", coarse_feature)
                 new_row = {'reviewerID':reviewerID[i], 'itemID':asin, 'overall': overall[i],
                            'fine_feature':fine_feature, 'coarse_feature':coarse_feature}
                 rowList.append(new_row)
-            except:
-                print("Error: ", text)
+            except Exception as e:
+                print("Error: ", e, "Text: ", text)
                 ErrorList.append(text)
                 continue
     return pd.DataFrame(rowList, columns=['reviewerID', 'itemID', 'overall', 'fine_feature', 'coarse_feature'])
@@ -320,7 +320,8 @@ def MergeFineCoarseFeatures(data_df, groupBy="reviewerID"):
                 else:
                     feature += fine_feature * coarse_feature
                 count += 1
-            except:
+            except Exception as e:
+                print("Error: ", e)
                 continue
         feature_dict[id] = np.array(feature.tolist())  
     return feature_dict
