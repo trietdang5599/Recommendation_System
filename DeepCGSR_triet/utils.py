@@ -9,33 +9,34 @@ from nltk import word_tokenize
 from nltk.corpus import stopwords
 
 
-# 数据读取
+import json
+
 def read_data(file_path):
     """
        params:
-           file_path: 文件路径
+           file_path: Đường dẫn đến tệp
        return:
-           data: 读取的数据列表，每行一条样本
+           data: Danh sách dữ liệu đã đọc, mỗi dòng là một mẫu
 
     """
     data = []
     with open(file_path, "r") as f:
-        for line in f.readlines():
-            # 过长的评论文本会超出io限制报错。 暂时忽略
+        for line in f:
             try:
-                # 字符串预处理
-                # 布尔替换成python的习惯
-                str_text = line.replace("true", "True")
-                str_text = str_text.replace("false", "False")
-                # 转成字典形式
-                raw_sample = eval(str_text)
+                # Chuyển đổi từ văn bản JSON sang đối tượng Python
+                raw_sample = json.loads(line)
+
+                # Chuẩn hóa dữ liệu và thêm vào danh sách data
                 data.append([raw_sample['reviewerID'],
                              raw_sample['asin'],
                              raw_sample['overall'],
                              raw_sample['reviewText']])
-            except:
+            except json.JSONDecodeError:
+                # Bắt các lỗi khi chuyển đổi từ JSON
+                # Bạn có thể xử lý các lỗi ở đây nếu cần
                 pass
     return data
+
 
 
 def softmax(x):
@@ -54,8 +55,8 @@ def sigmoid(x):
 # 加载停用词
 stop_words = stopwords.words("english") + list(string.punctuation)
 def word_segment(text):
-    # word_seg = [i for i in word_tokenize(str(text).lower()) if i not in stop_words]
-    # word_seg = text.split(" ")
+    word_seg = [i for i in word_tokenize(str(text).lower()) if i not in stop_words]
+    word_seg = text.split(" ")
     word_seg = [i for i in word_tokenize(str(text).lower())]
     return word_seg
 

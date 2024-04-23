@@ -98,8 +98,8 @@ for reviewer_id, df in data_df.groupby("reviewerID"):
             print("Error: ", text)
             ErrorList.append(text)
             continue
-    reviewer_feature_dict[reviewer_id] = review_feature
-    print(review_feature)
+        reviewer_feature_dict[reviewer_id] = review_feature
+        print(review_feature)
 
 print("===================================")
 # 商品特征提取
@@ -120,11 +120,9 @@ for asin, df in data_df.groupby("asin"):
         except:
             print("Error: ", text)
             ErrorList.append(text)
-            continue
-        
-        
-    item_feature_dict[asin] = item_feature
-    print(item_feature)
+            continue  
+        item_feature_dict[asin] = item_feature
+        print(item_feature)
 
 print(reviewer_feature_dict)
 CreateAndWriteCSV('review_feature', reviewer_feature_dict)

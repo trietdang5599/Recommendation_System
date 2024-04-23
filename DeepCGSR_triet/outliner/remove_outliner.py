@@ -9,7 +9,6 @@ sample= [15, 101, 18, 7, 13, 16, 11, 21, 5, 15, 10, 9]
 # plt.show()
 
 
-
 # def detect_outliers_zscore(data):
 #   thres = 3
 #   mean = np.mean(data)

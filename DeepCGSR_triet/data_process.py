@@ -19,38 +19,10 @@ def getDF(path):
     i += 1
   return pd.DataFrame.from_dict(df, orient='index')
 
-df = getDF('data/All_Beauty_5.json.gz')
+# df = getDF('data/All_Beauty_5.json.gz')
+df = getDF('data/All_Beauty_Filtered.json.gz')
 # print(df.head())
 # print(df.iloc[0])
-
-
-
-def SeperateData(csv_path):
-  #Đường dẫn đến tệp JSON đầu vào
-  json_file = 'data/All_Beauty_5.json.gz'
-
-
-  # Mở tệp JSON và tạo tệp CSV
-  with gzip.open(json_file, 'rb') as json_data:
-      data = [json.loads(line) for line in json_data]
-
-
-  # Chọn các trường dữ liệu (cột) mà bạn muốn ghi vào tệp CSV (3/5 trường)
-  selected_fields = ['reviewerID', 'asin', 'overall','unixReviewTime']
-
-  # Ghi dữ liệu vào tệp CSV
-  with open(csv_path, 'w', newline='') as csv_data:
-      csv_writer = csv.writer(csv_data)
-
-      # Ghi tiêu đề
-      csv_writer.writerow(selected_fields)
-
-      # Ghi dữ liệu từ tệp JSON vào tệp CSV
-      for item in data:
-          row = [item[field] for field in selected_fields]
-          csv_writer.writerow(row)
-
-  print(f'Dữ liệu đã được ghi vào "{csv_path}" trong thư mục "data".')
 
 def TransformLabel(data, csv_path):
   user = LabelEncoder()
@@ -59,7 +31,7 @@ def TransformLabel(data, csv_path):
   item = LabelEncoder()
   item.fit(data[:, 1])
   data[:, 1] = item.transform(data[:, 1])
-  selected_fields = ['reviewerID', 'asin', 'overall','unixReviewTime']
+  selected_fields = ['reviewerID', 'itemID', 'overall']
   with open(csv_path, 'w', newline='') as csv_data:
     csv_writer = csv.writer(csv_data)
 
@@ -71,13 +43,49 @@ def TransformLabel(data, csv_path):
         csv_writer.writerow(item)
 
 
+def TransformLabel_Deep(data, csv_path):
+     # Khởi tạo LabelEncoder cho user
+    user_encoder = LabelEncoder()
+
+    # Lấy các giá trị reviewerID từ cột đầu tiên của data
+    reviewer_ids = data[:, 0]
+
+    # Fit và transform user
+    user_encoded = user_encoder.fit_transform(reviewer_ids)
+
+    # Thay thế cột reviewerID trong data bằng các giá trị đã được mã hóa
+    data[:, 0] = user_encoded
+
+    # Chọn các trường cần ghi vào CSV
+    selected_fields = ['ID', 'Array']
+
+    # with open(csv_path, 'r', newline='') as csv_file:
+    #     csv_reader = csv.DictReader(csv_file)
+    #     for row in csv_reader:
+    #       print(row["Array"])
+    with open(csv_path, 'w', newline='') as csv_data:
+        
+        csv_writer = csv.writer(csv_data)
+
+        # Ghi tiêu đề
+        csv_writer.writerow(selected_fields)
+
+        # Ghi dữ liệu từ data vào tệp CSV
+        csv_writer.writerows(data)
 
 class ReviewAmazon():
     
-  def __init__(self, dataset_path, sep=',', engine='c', header='infer'):
-    SeperateData(dataset_path)
-
-    data = pd.read_csv(dataset_path, sep=sep, engine=engine, header=header).to_numpy()[:, :3]
+  def __init__(self, data_path, dataset_path, sep=',', engine='c', header='infer'):
+    # SeperateData(dataset_path)
+    # data = pd.read_csv(dataset_path, sep=sep, engine=engine, header=header).to_numpy()[:, :3]
+    data = pd.read_csv(data_path, sep=sep, engine=engine, header=header,
+                       usecols=['reviewerID', 'itemID', 'overall']).to_numpy()[:, :3]
+    # data = pd.read_csv("./feature/allFeatureReview.csv", sep=sep, engine=engine, header=header,
+    #                    usecols=['reviewerID', 'itemID', 'overall']).to_numpy()[:, :3]
+    
+    # data.columns = ['ReviewerID', 'ItemID', 'overall']
+    # print(data.head())
+    print("====================================")
     # if os.path.exists(dataset_path) == False:
     TransformLabel(data, dataset_path)
     self.items = data[:, :2].astype(np.int)  # -1 because ID begins from 1
