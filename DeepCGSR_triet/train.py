@@ -3,7 +3,7 @@ import tqdm
 from config import args
 from sklearn.metrics import roc_auc_score
 from data_process import ReviewAmazon
-from DeepCGSR import review_feature_z, item_feature_z 
+# from DeepCGSR import *
 from torch.utils.data import DataLoader
 from torchfm.dataset.movielens import MovieLens1MDataset, MovieLens20MDataset
 from torchfm.model.fm import FactorizationMachineModel
@@ -15,12 +15,12 @@ def get_dataset(name, path):
     elif name == 'movielens20M':
         return MovieLens20MDataset(path)
     elif name == 'reviewAmazon':
-        return ReviewAmazon(path)
+        return ReviewAmazon(data_path=args.data_path,dataset_path=path)
 
 def get_model(dataset):
     field_dims = dataset.field_dims
     print("dataset_shape: ", len(dataset))
-    return FactorizationMachineModel(field_dims, embed_dim=16)
+    return FactorizationMachineModel(field_dims, embed_dim=20)
 
 class EarlyStopper(object):
 
@@ -44,14 +44,14 @@ class EarlyStopper(object):
 
 
 def train(model, optimizer, data_loader, criterion, device, log_interval=100):
+    
     model.train()
     total_loss = 0
     tk0 = tqdm.tqdm(data_loader, smoothing=0, mininterval=1.0)
     for i, (fields, target) in enumerate(tk0):
         fields, target = fields.to(device), target.to(device)
         y = model(fields)
-        print(y)
-        y = y + review_feature_z
+        # print(model)
         loss = criterion(y, target.float())
         model.zero_grad()
         loss.backward()
@@ -60,6 +60,7 @@ def train(model, optimizer, data_loader, criterion, device, log_interval=100):
         if (i + 1) % log_interval == 0:
             tk0.set_postfix(loss=total_loss / log_interval)
             total_loss = 0
+            
 
 
 def test(model, data_loader, device):
@@ -69,6 +70,7 @@ def test(model, data_loader, device):
         for fields, target in tqdm.tqdm(data_loader, smoothing=0, mininterval=1.0):
             fields, target = fields.to(device), target.to(device)
             y = model(fields)
+            # print(model.linear.fc.weight.data)
             targets.extend(target.tolist())
             predicts.extend(y.tolist())
     
@@ -89,6 +91,9 @@ def main(dataset_name,
     train_length = int(len(dataset) * 0.7)
     valid_length = int(len(dataset) * 0.1)
     test_length = len(dataset) - train_length - valid_length
+    print("train_length: ", train_length)
+    print("valid_length: ", valid_length)
+    print("test_length: ", test_length)
     train_dataset, valid_dataset, test_dataset = torch.utils.data.random_split(
         dataset, (train_length, valid_length, test_length))
     train_data_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=8)
@@ -97,7 +102,7 @@ def main(dataset_name,
     model = get_model(dataset).to(device)
     criterion = torch.nn.BCELoss()
     optimizer = torch.optim.Adam(params=model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-    early_stopper = EarlyStopper(num_trials=10, save_path=f'{save_dir}/{model_name}.pt')
+    early_stopper = EarlyStopper(num_trials=2, save_path=f'{save_dir}/{model_name}.pt')
     for epoch_i in range(epoch):
         train(model, optimizer, train_data_loader, criterion, device)
         auc = test(model, valid_data_loader, device)

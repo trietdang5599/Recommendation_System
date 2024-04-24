@@ -21,7 +21,7 @@ def CreateAndWriteCSV(name, data):
     print(f'File CSV "{filename}" đã được tạo và ghi thành công.')
 
 # 数据读取
-data = read_data("./data/raw/All_Beauty_5_test.json")
+data = read_data("./data/All_Beauty_5.json")
 data_df = pd.DataFrame(data)
 data_df.columns = ['reviewerID', 'asin', 'overall', 'reviewText']
 data = data_df["reviewText"].tolist()
@@ -41,8 +41,11 @@ model_path = './config/stanford-parser-full-2020-11-17/stanford-parser-4.2.0-mod
 parser_path = './config/stanford-parser-full-2020-11-17/stanford-parser.jar'
 
 dep_parser = DependencyParser(model_path, parser_path)
+
+print("====================TOPICS=======================")
 print(topic_to_words)
-print(dictionary)
+print("=================================================")
+# print(dictionary)
 # step3: 情感词表
 
 
@@ -95,8 +98,8 @@ for reviewer_id, df in data_df.groupby("reviewerID"):
             print("Error: ", text)
             ErrorList.append(text)
             continue
-    reviewer_feature_dict[reviewer_id] = review_feature
-    print(review_feature)
+        reviewer_feature_dict[reviewer_id] = review_feature
+        print(review_feature)
 
 print("===================================")
 # 商品特征提取
@@ -117,11 +120,9 @@ for asin, df in data_df.groupby("asin"):
         except:
             print("Error: ", text)
             ErrorList.append(text)
-            continue
-        
-        
-    item_feature_dict[asin] = item_feature
-    print(item_feature)
+            continue  
+        item_feature_dict[asin] = item_feature
+        print(item_feature)
 
 print(reviewer_feature_dict)
 CreateAndWriteCSV('review_feature', reviewer_feature_dict)

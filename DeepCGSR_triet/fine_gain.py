@@ -1,5 +1,7 @@
 # -*- coding:utf-8 -*-
 
+from lda_bert import LDA_BERT
+import pandas as pd
 import numpy as np
 from gensim import corpora
 from gensim.models import LdaModel
@@ -20,7 +22,24 @@ def get_lda_mdoel(split_data, num_topics, num_words):
 
     # LDA模型训练
     model = LdaModel(corpus=corpus, id2word=dictionary, num_topics=num_topics)
+    # path = "./data/All_Beauty_5.json"
+    # data = pd.read_json(path, lines=True)
+    # count = 0
+    # index = []
+    # for i in range(len(data)):
+    # #print(i)
+    #     if type(data.iloc[i, 7]) == float:
+    #         count += 1
+    #     else:
+    #         index.append(i)
 
+    # documents = data.iloc[index, 7]
+    # documents = documents.reset_index()
+    # documents.drop('index', inplace = True, axis = 1)
+
+    # # create data frame with all abstracts, use as input corpus
+    # documents['index'] = documents.index.values
+    # model = LDA_BERT(k = num_topics, method = "LDA_BERT", documents=documents)
     # 主题单词矩阵
     topic_to_words = []
     for i in range(num_topics):
@@ -63,7 +82,8 @@ def get_topic_sentiment_metrix(text, dictionary, lda_model, topic_word_metrix, d
     text_p = word_segment(text)
     doc_bow = dictionary.doc2bow(text_p)  # 文档转换成bow
     doc_lda = lda_model[doc_bow]  # [(12, 0.042477883), (13, 0.36870235), (16, 0.35455772), (37, 0.20635633)]
-    print(doc_bow)
+    # print("doc_bow: ", doc_bow)
+    # print("lda_model: ", doc_lda)
     # 初始化主题矩阵
     topci_sentiment_m = np.zeros(topic_nums)
 

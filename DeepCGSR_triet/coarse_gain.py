@@ -31,7 +31,8 @@ def get_coarse_simtiment_score(text, word2vec_model):
 
 if __name__ == "__main__":
     # 数据读取
-    data = read_data("./data/raw/All_Beauty_5.json")
+    # data = read_data("./data/raw/All_Beauty_5.json")
+    data = read_data("./data/raw/All_Beauty_Filtered.json")
     data_df = pd.DataFrame(data)
     data_df.columns = ['reviewerID', 'asin', 'overall', 'reviewText']
 
