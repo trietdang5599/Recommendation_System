@@ -191,7 +191,7 @@ def CreateAndWriteCSV(name, data):
 
         # Ghi tiêu đề
         writer.writerow(['Key', 'Array'])
-
+        # print(data)
         # Ghi dữ liệu từ từ điển vào file
         for key, value in data.items():
             # Kiểm tra kiểu dữ liệu trước khi chuyển đổi
@@ -584,30 +584,18 @@ z_review = mergeReview_Rating("feature/reviewer_feature.csv", "z_reviewer", "rev
 #============================ Calulate U/I deep ===============================
 
 
-def Caculate_Deep(v, z):
-    list_deep = {}
-    i = 0
+def Calculate_Deep(v, z, start):
+    list_sum = {}
+    i = start
     for name, z_i in z.items():
-                # Convert numpy array to torch tensor
-        v_tensor = torch.tensor(v[i], dtype=torch.float32)
-        z_i_tensor = torch.tensor(z_i, dtype=torch.float32)
-
-        # Compute the sum of the product of feature values and their corresponding latent vectors
-        Vx = v_tensor * z_i_tensor.unsqueeze(1)  # Element-wise multiplication to scale latent vectors by the feature value
-
-        sum_Vx = torch.sum(Vx, dim=1)  # Sum over features for each factor
-
-        # Compute the square of the sums
-        sum_Vx_squared = sum_Vx ** 2
-
-        # Compute the sum of squares of the latent vectors themselves
-        sum_squared_Vx = torch.sum(Vx ** 2, dim=1)
-
-        # Calculate U_deep according to the FM transformation
-        U_deep = 0.5 * (sum_Vx_squared - sum_squared_Vx)
-        list_deep[name] = U_deep
-        i += 1
-    return list_deep
+        if i < len(v):  # Đảm bảo vẫn còn phần tử trong danh sách v
+            v_i = v[i]
+            sum_v_z = v_i * z_i
+            sum_v2_z2 = (v_i**2) * (z_i**2)
+            result = (1 / 2) * ((sum_v_z)**2 - sum_v2_z2)
+            list_sum[name] = result
+            i += 1
+    return list_sum
 
 #==============================================================================
 
@@ -621,11 +609,14 @@ dataset = get_dataset(args.dataset_name, args.dataset_path)
 # model = get_model(dataset).to(device)
 model = get_model(dataset)
 v_list = np.array(model.embedding.embedding.weight.data.tolist())
-
-u_deep = Caculate_Deep(v_list, z_review)
-i_deep = Caculate_Deep(v_list, z_item)
+# print(v_list)
+u_deep = Calculate_Deep(v_list, z_review, 0)
+i_deep = Calculate_Deep(v_list, z_item, len(z_review))
 CreateAndWriteCSV("u_deep", u_deep)
 CreateAndWriteCSV("i_deep", i_deep)
+TransformLabel_Deep(pd.read_csv("feature/u_deep.csv", sep=',', engine='c', header='infer').to_numpy()[:, :3], "feature/transformed_udeep.csv")
+TransformLabel_Deep(pd.read_csv("feature/i_deep.csv", sep=',', engine='c', header='infer').to_numpy()[:, :3], "feature/transformed_ideep.csv")
+
 
 def merge_csv_columns(csv_file1, id_column1, csv_file2, id_column2, value_column2, new_column):
     # Đọc dữ liệu từ file CSV thứ hai và ánh xạ ID với giá trị

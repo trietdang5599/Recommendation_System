@@ -106,8 +106,8 @@ def reprocess_input(data):
 #     return target.astype(np.float32)
 
 def load_data(csv_file):
-    merge_csv_columns('data/ratings_AB.csv', 'reviewerID', 'transformed_udeep.csv', 'ID', 'Array', 'Udeep')
-    merge_csv_columns('data/ratings_AB.csv', 'itemID', 'transformed_ideep.csv', 'ID', 'Array', 'Ideep')
+    merge_csv_columns('data/ratings_AB.csv', 'reviewerID', 'feature/transformed_udeep.csv', 'ID', 'Array', 'Udeep')
+    merge_csv_columns('data/ratings_AB.csv', 'itemID', 'feature/transformed_ideep.csv', 'ID', 'Array', 'Ideep')
     count = 0
     data = []
     with open(csv_file, 'r', newline='') as file:
