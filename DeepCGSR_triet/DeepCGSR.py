@@ -19,7 +19,7 @@ from config import args
 # nltk.download('sentiwordnet')
 
 isRemoveOutliner = args.isRemoveOutliner
-
+dataset_json = args.dataset_json
 #region Fine-gain
 # ============== fine-gain ================
 #step1: LDA model
@@ -203,7 +203,7 @@ def CreateAndWriteCSV(name, data):
 
     print(f'File CSV "{filename}" đã được tạo và ghi thành công.')
 # Lấy dữ liệu của AB
-data = read_data("./data/raw/All_Beauty_Filtered.json")
+data = read_data(dataset_json)
 data_df = pd.DataFrame(data)
 data_df.columns = ['reviewerID', 'asin', 'overall', 'reviewText']
 data = data_df["reviewText"].tolist()
@@ -282,7 +282,7 @@ rowList = []
 def ExtractReviewFeature(data_df):
     # 商品特征提取
     print("=========================Merge Items==========================")
-    for asin, df in data_df.groupby("asin"):
+    for asin, df in tqdm.tqdm(data_df.groupby("asin")):
         review_text = df["reviewText"].tolist()
         reviewerID = df["reviewerID"].tolist()
         overall = df["overall"].tolist()
@@ -522,7 +522,9 @@ emb_user,emb_item = svd.get_embedings()
 # print(emb_item.shape)
 # print(np.sqrt(svd.cost(emb_user,emb_item)))
 print(len(reviewer_feature_dict))
+args.user_length = len(reviewer_feature_dict)
 print(len(item_feature_dict))
+args.item_length = len(item_feature_dict)
 # print(svd.get_user_embedding('AX0ZEGHH0H525').shape)
 
 
@@ -605,7 +607,7 @@ from data_process import *
 
 
 # device = torch.device(args.device)
-dataset = get_dataset(args.dataset_name, args.dataset_path)
+dataset = get_dataset(args.dataset_name, args.data_feature)
 # model = get_model(dataset).to(device)
 model = get_model(dataset)
 v_list = np.array(model.embedding.embedding.weight.data.tolist())
@@ -649,8 +651,8 @@ def merge_csv_columns(csv_file1, id_column1, csv_file2, id_column2, value_column
 
 
 # Sử dụng function merge_csv_columns
-merge_csv_columns('data/ratings_AB.csv', 'reviewerID', 'feature/u_deep.csv', 'Key', 'Array', 'Udeep')
-merge_csv_columns('data/ratings_AB.csv', 'itemID', 'feature/i_deep.csv', 'Key', 'Array', 'Ideep')
+merge_csv_columns(args.data_feature, 'reviewerID', 'feature/u_deep.csv', 'Key', 'Array', 'Udeep')
+merge_csv_columns(args.data_feature, 'itemID', 'feature/i_deep.csv', 'Key', 'Array', 'Ideep')
 
 #endregion
 
