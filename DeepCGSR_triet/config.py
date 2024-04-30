@@ -7,7 +7,7 @@ class config:
     dataset_name='reviewAmazon'
     # dataset_json = 'data/raw/Digital_Music_Filtered.json'
     # dataset_json = 'data/raw/All_Beauty_Filtered.json'
-    dataset_json = 'data/raw/All_Beauty_5.json'
+    dataset_json = 'data/DigitalMusic/Digital_Music_Filtered_0.json'
     user_length = 0
     item_length = 0
     # data_path='feature/filteredFeatures.csv'

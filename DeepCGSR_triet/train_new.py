@@ -291,5 +291,5 @@ for i in range(10):
     if args.isRemoveOutliner:
         save_to_excel([results], ['AUC', 'RSME Test'], 'results_outliner.xlsx')
     else:
-        save_to_excel([results], ['AUC', 'RSME Test'], 'results_AllBeauty.xlsx')
+        save_to_excel([results], ['AUC', 'RSME Test'], 'results_DigitalMusic.xlsx')
 
