@@ -25,7 +25,8 @@ def read_data(file_path):
             try:
                 # Chuyển đổi từ văn bản JSON sang đối tượng Python
                 raw_sample = json.loads(line)
-
+                if 'reviewText' not in raw_sample:
+                    raw_sample['reviewText'] = ''
                 # Chuẩn hóa dữ liệu và thêm vào danh sách data
                 data.append([raw_sample['reviewerID'],
                              raw_sample['asin'],
@@ -55,8 +56,8 @@ def sigmoid(x):
 # 加载停用词
 stop_words = stopwords.words("english") + list(string.punctuation)
 def word_segment(text):
-    word_seg = [i for i in word_tokenize(str(text).lower()) if i not in stop_words]
-    word_seg = text.split(" ")
+    # word_seg = [i for i in word_tokenize(str(text).lower()) if i not in stop_words]
+    # word_seg = text.split(" ")
     word_seg = [i for i in word_tokenize(str(text).lower())]
     return word_seg
 

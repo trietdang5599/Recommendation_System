@@ -106,8 +106,8 @@ def reprocess_input(data):
 #     return target.astype(np.float32)
 
 def load_data(csv_file):
-    merge_csv_columns('data/ratings_AB.csv', 'reviewerID', 'transformed_udeep.csv', 'ID', 'Array', 'Udeep')
-    merge_csv_columns('data/ratings_AB.csv', 'itemID', 'transformed_ideep.csv', 'ID', 'Array', 'Ideep')
+    merge_csv_columns(args.data_feature, 'reviewerID', 'feature/transformed_udeep.csv', 'ID', 'Array', 'Udeep')
+    merge_csv_columns(args.data_feature, 'itemID', 'feature/transformed_ideep.csv', 'ID', 'Array', 'Ideep')
     count = 0
     data = []
     with open(csv_file, 'r', newline='') as file:
@@ -162,9 +162,22 @@ def test_rsme(model, data_loader, device):
             # print("Min: ", min(y))
             predicts.extend([float(pred) for pred in y.flatten().cpu().numpy()])
 
-    
+    new_targer = []
+    new_predict = []
+    for i in targets:
+        if i < 3:
+            new_targer.append(-1)
+        else:
+            new_targer.append(1)
+    for i in predicts:
+        if i < 3:
+            new_predict.append(-1)
+        else:
+            new_predict.append(1)
+            
+    return roc_auc_score(new_targer, new_predict) 
     # return roc_auc_score(targets, predicts) 
-    return calculate_rmse(targets, predicts)
+    # return calculate_rmse(targets, predicts)
 
 def test(model, data_loader, device):
     model.eval()
@@ -177,7 +190,20 @@ def test(model, data_loader, device):
             predicts.extend([round(float(pred)) for pred in y.flatten().cpu().numpy()])
     # print(targets)
     # print(predicts)
-    accuracy = accuracy_score(targets, predicts)
+    new_targer = []
+    new_predict = []
+    for i in targets:
+        if i < 3:
+            new_targer.append(-1)
+        else:
+            new_targer.append(1)
+    for i in predicts:
+        if i < 3:
+            new_predict.append(-1)
+        else:
+            new_predict.append(1)
+            
+    accuracy = accuracy_score(new_targer, new_predict)
     return accuracy
 
 def train(model, optimizer, data_loader, criterion, device, log_interval=100):
@@ -208,15 +234,21 @@ def train(model, optimizer, data_loader, criterion, device, log_interval=100):
     
     print(f"Epoch {epoch+1}, Loss: {total_loss / len(data_loader)}")
         
-        
+def get_num_users_items(dataset):
+    # Số lượng người dùng là giá trị lớn nhất trong cột đầu tiên của dataset
+    num_users = max(row[0] for row in dataset)
+    # Số lượng mặt hàng là giá trị lớn nhất trong cột thứ hai của dataset
+    num_items = max(row[1] for row in dataset)
+    return num_users, num_items
+
 # Instantiate the model
-num_users, num_items = 991, 85  # Example numbers for users and items
+dataset = load_data(args.data_feature)
+num_users, num_items = args.user_length, args.item_length  # Example numbers for users and items
 num_features = 20  # This should match the size of your U_deep and I_deep feature vectors
 batch_size = 32
 epoch = 10
 device='cuda:0'
 for i in range(10):
-    dataset = load_data('data/ratings_AB.csv')
     # train_loader = DataLoader(dataset, batch_size, shuffle=True)
     train_length = int(len(dataset) * 0.7)
     valid_length = int(len(dataset) * 0.1)
@@ -255,9 +287,9 @@ for i in range(10):
     rsme_test = test_rsme(model, test_data_loader, device)
     print(f'test rsme:', {rsme_test})
     print(f'average validate rsme:', {rsme/count})
-    results = [auc_test, rsme_test, (rsme/count)]
+    results = [auc_test, rsme_test]
     if args.isRemoveOutliner:
-        save_to_excel([results], ['AUC', 'RSME', 'Average RSME'], 'results_outliner.xlsx')
+        save_to_excel([results], ['AUC', 'RSME Test'], 'results_outliner.xlsx')
     else:
-        save_to_excel([results], ['AUC', 'RSME', 'Average RSME'], 'results_allReviews.xlsx')
+        save_to_excel([results], ['AUC', 'RSME Test'], 'results_DigitalMusic.xlsx')
 
