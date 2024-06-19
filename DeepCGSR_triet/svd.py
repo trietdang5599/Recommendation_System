@@ -25,7 +25,7 @@ class SVD():
 
         self.beta = 0.9
         self.lmbda = 0.0002
-        self.k = 10 # why?
+        self.k = 40 # why?
         self.learning_rate = 0.01
         self.iterations = 1000
         self.u_dim = len(self.users) #991
@@ -48,22 +48,22 @@ class SVD():
         return pd.DataFrame.from_dict(df, orient='index')
 
     def init_ratings_matric(self):
-        for item in self.df.itertuples():
-            r = item[3]
-            u = item[1]
-            i = item[2]
-            iu = self.users.index(u)
-            ii = self.items.index(i)
-            self.rows.append(iu)
-            self.cols.append(ii)
-            self.data.append(r)
-        ratings = np.zeros((len(self.users), len(self.items)))
+            for item in self.df.itertuples():
+                r = item[3]
+                u = item[1]
+                i = item[2]
+                iu = self.users.index(u)
+                ii = self.items.index(i)
+                self.rows.append(iu)
+                self.cols.append(ii)
+                self.data.append(r)
+            ratings = np.zeros((len(self.users), len(self.items)))
 
-        for r, c, d in zip(self.rows, self.cols, self.data):
-            ratings[int(r), int(c)] = d
+            for r, c, d in zip(self.rows, self.cols, self.data):
+                ratings[int(r), int(c)] = d
 
-        self.ratings = ratings
-        self.sparse_ratings = self.create_sparse_matrix(self.data,self.u_dim,self.i_dim)
+            self.ratings = ratings
+            self.sparse_ratings = self.create_sparse_matrix(self.data,self.u_dim,self.i_dim)
 
 
     def create_sparse_matrix(self,data,  len_user, len_item):
@@ -145,24 +145,24 @@ class SVD():
 
 
 if __name__ == '__main__':
-    # checkpoint_path = 'chkpt/svd.pt'
-    # # Kiểm tra xem tệp checkpoint có tồn tại không
-    # if os.path.exists(checkpoint_path):
-    #     # Tải mô hình từ checkpoint
-    #     svd = torch.load(checkpoint_path)
+    checkpoint_path = 'chkpt/svd.pt'
+    # Kiểm tra xem tệp checkpoint có tồn tại không
+    if os.path.exists(checkpoint_path):
+        # Tải mô hình từ checkpoint
+        svd = torch.load(checkpoint_path)
         
-    # else:
-    #     svd = SVD()
-    #     svd.train() 
-    #     torch.save(svd, checkpoint_path)
+    else:
+        svd = SVD()
+        svd.train() 
+        torch.save(svd, checkpoint_path)
 
-    svd = SVD()
-    svd.train()
+    # svd = SVD('feature/allFeatureReview.csv')
+    # svd.train()
     emb_user,emb_item = svd.get_embedings()
-    # print(emb_user)
-    # print(emb_item)
+    print(emb_user)
+    print(emb_item)
     print(emb_user.shape)
-    print(svd.get_user_embedding('A3CIUOJXQ5VDQ2'))
+    print(svd.get_user_embedding('A2AVMXNBKEL5T6'))
 
 
 

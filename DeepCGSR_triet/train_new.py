@@ -2,7 +2,7 @@ import numpy as np
 import tqdm
 from config import args
 from DeepCGSR import merge_csv_columns
-from sklearn.metrics import roc_auc_score, accuracy_score
+from sklearn.metrics import roc_auc_score, accuracy_score, precision_score, recall_score, f1_score
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.functional import mse_loss
@@ -174,7 +174,11 @@ def test_rsme(model, data_loader, device):
             new_predict.append(-1)
         else:
             new_predict.append(1)
-            
+    print("rsme raw: ", calculate_rmse(targets, predicts))
+    # print("F1_Score raw: ", f1_score(targets, predicts, average='macro'))
+    print("F1_Score: ", f1_score(new_targer, new_predict))
+    # print("Recall raw: ", recall_score(targets, predicts, average='macro'))
+    print("Recall: ", recall_score(new_targer, new_predict))
     return roc_auc_score(new_targer, new_predict) 
     # return roc_auc_score(targets, predicts) 
     # return calculate_rmse(targets, predicts)
@@ -204,6 +208,7 @@ def test(model, data_loader, device):
             new_predict.append(1)
             
     accuracy = accuracy_score(new_targer, new_predict)
+    # accuracy = accuracy_score(targets, predicts)
     return accuracy
 
 def train(model, optimizer, data_loader, criterion, device, log_interval=100):
@@ -244,7 +249,7 @@ def get_num_users_items(dataset):
 # Instantiate the model
 dataset = load_data(args.data_feature)
 num_users, num_items = args.user_length, args.item_length  # Example numbers for users and items
-num_features = 20  # This should match the size of your U_deep and I_deep feature vectors
+num_features = 50  # This should match the size of your U_deep and I_deep feature vectors
 batch_size = 32
 epoch = 10
 device='cuda:0'
@@ -282,11 +287,14 @@ for i in range(10):
             break
 
     print('epoch:', i, 'validation: rsme:', rsme/count)
+    if os.path.exists(early_stopper.save_path):
+    # Tải mô hình từ checkpoint
+        model = torch.load(early_stopper.save_path)
     auc_test = test(model, test_data_loader, device)
     print(f'test auc: {auc_test}')
     rsme_test = test_rsme(model, test_data_loader, device)
     print(f'test rsme:', {rsme_test})
-    print(f'average validate rsme:', {rsme/count})
+    # print(f'average validate rsme:', {rsme/count})
     results = [auc_test, rsme_test]
     if args.isRemoveOutliner:
         save_to_excel([results], ['AUC', 'RSME Test'], 'results_outliner.xlsx')

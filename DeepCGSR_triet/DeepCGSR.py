@@ -14,6 +14,10 @@ import tqdm
 from utils import read_data, softmax, word_segment, preprocessed, sigmoid
 import torch
 import nltk
+from sklearn.cluster import KMeans
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+from transformers import BertTokenizer, BertModel
 from config import args
 # nltk.download('wordnet')
 # nltk.download('sentiwordnet')
@@ -41,6 +45,52 @@ def get_lda_mdoel(split_data, num_topics, num_words):
         cur_topic_words = [ele[0] for ele in model.show_topic(i, num_words)]
         topic_to_words.append(cur_topic_words)
     return model, dictionary, topic_to_words
+
+def get_tbert_model(split_data, num_topics, num_words):
+    """ T-BERT模型训练词表构建主题单词矩阵获取 """
+    
+    # Load pre-trained BERT model and tokenizer
+    model_name = 'bert-base-uncased'
+    tokenizer = BertTokenizer.from_pretrained(model_name)
+    model = BertModel.from_pretrained(model_name)
+    
+    # Tokenize and get BERT embeddings for each document
+    def get_bert_embeddings(texts):
+        inputs = tokenizer(texts, return_tensors='pt', padding=True, truncation=True, max_length=512)
+        with torch.no_grad():
+            outputs = model(**inputs)
+        return outputs.last_hidden_state.mean(dim=1)
+    
+    # Generate embeddings for all documents
+    embeddings = []
+    for text in split_data:
+        embedding = get_bert_embeddings([' '.join(text)])
+        embeddings.append(embedding)
+    embeddings = torch.vstack(embeddings)
+
+    # Clustering to find topics
+    kmeans = KMeans(n_clusters=num_topics, random_state=0).fit(embeddings.numpy())
+    labels = kmeans.labels_
+    
+    # Extract top words for each topic
+    topic_to_words = []
+    for i in range(num_topics):
+        cluster_indices = [j for j, label in enumerate(labels) if label == i]
+        cluster_texts = [' '.join(split_data[j]) for j in cluster_indices]
+        
+        vectorizer = TfidfVectorizer(max_features=num_words)
+        tfidf_matrix = vectorizer.fit_transform(cluster_texts)
+        
+        indices = np.argsort(tfidf_matrix.sum(axis=0)).flatten()[::-1]
+        feature_names = vectorizer.get_feature_names_out()
+        top_words = [feature_names[ind] for ind in indices[:num_words]]
+        topic_to_words.append(top_words)
+    
+    # Create a dummy dictionary for compatibility
+    # dictionary = {i: word for i, word in enumerate(vectorizer.get_feature_names_out())}
+    dictionary = corpora.Dictionary(split_data)
+    corpus = [dictionary.doc2bow(text) for text in split_data]
+    return embeddings, model, kmeans, dictionary, topic_to_words
 
 # step2: nltk 依存句法分析
 
@@ -126,6 +176,46 @@ def get_topic_sentiment_metrix(text, dictionary, lda_model, topic_word_metrix, d
         topci_sentiment_m[topic_id] = cur_topic_sentiment
     return topci_sentiment_m
 
+def get_topic_sentiment_metrix_tbert(text, topic_word_metrix, dependency_parser, topic_nums=50):
+    # Khởi tạo ma trận cảm xúc chủ đề
+    topic_sentiment_m = np.zeros(topic_nums)
+
+    # Lấy kết quả phân tích cú pháp phụ thuộc
+    sentences = preprocessed(text)
+    dep_parser_result_p = []
+    for i in sentences:
+        # Phân tích cú pháp phụ thuộc
+        dep_parser_result = dependency_parser.raw_parse(i)
+        for j in dep_parser_result:
+            dep_parser_result_p.append([j[0][0], j[2][0]])
+
+    for topic_id, cur_topic_words in enumerate(topic_word_metrix):
+        # Lấy các từ khóa của chủ đề hiện tại
+        cur_topic_sentiment = 0
+        cur_topic_senti_word = []
+        # Dựa vào từ khóa để lấy các từ cảm xúc
+        for word in word_segment(text):
+            if any(word in sublist for sublist in cur_topic_words):
+                cur_topic_senti_word.append(word)
+                for p in dep_parser_result_p:
+                    if p[0] == word:
+                        cur_topic_senti_word.append(p[1])
+                    if p[1] == word:
+                        cur_topic_senti_word.append(p[0])
+
+        for senti_word in cur_topic_senti_word:
+            # cur_topic_sentiment += word_to_senti.get(senti_word, 0)
+            cur_topic_sentiment += get_word_sentiment_score(senti_word)
+        # print("cur_topci_senti_word", cur_topci_senti_word)
+        # 主题情感取值范围[-5, 5]
+        if cur_topic_sentiment > 5:
+            cur_topic_sentiment = 5
+        elif cur_topic_sentiment < -5:
+            cur_topic_sentiment = -5
+
+        topic_sentiment_m[topic_id] = cur_topic_sentiment
+    return topic_sentiment_m
+
 #=============== End fine-gain functions ===================
 #endregion
 
@@ -142,6 +232,59 @@ def get_word2vec_model(is_train, model_path, split_data=None, vector_size=None, 
         model = Word2Vec.load(model_path)
     return model
 
+
+    """获取主题-情感矩阵"""
+
+    text_p = word_segment(text)
+    
+    # Lấy embeddings cho văn bản
+    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+    model = BertModel.from_pretrained('bert-base-uncased')
+    
+    inputs = tokenizer(text, return_tensors='pt', padding=True, truncation=True, max_length=512)
+    with torch.no_grad():
+        outputs = model(**inputs)
+    text_embedding = outputs.last_hidden_state.mean(dim=1)
+    
+    # Dự đoán chủ đề sử dụng KMeans
+    topic_id = kmeans.predict(text_embedding.numpy())[0]
+
+    # Khởi tạo ma trận cảm xúc chủ đề
+    topic_sentiment_m = np.zeros(topic_nums)
+
+    # Lấy kết quả phân tích cú pháp phụ thuộc
+    sentences = preprocessed(text)
+    dep_parser_result_p = []
+    for i in sentences:
+        # Phân tích cú pháp phụ thuộc
+        dep_parser_result = dependency_parser.raw_parse(i)
+        for j in dep_parser_result:
+            dep_parser_result_p.append([j[0][0], j[2][0]])
+
+    # Lấy các từ khóa của chủ đề hiện tại
+    cur_topic_words = topic_word_metrix[topic_id]
+    cur_topic_sentiment = 0
+    cur_topic_senti_word = []
+
+    # Dựa vào từ khóa để lấy các từ cảm xúc
+    for word in word_segment(text):
+        if word in cur_topic_words:
+            cur_topic_senti_word.append(word)
+            for p in dep_parser_result_p:
+                if p[0] == word:
+                    cur_topic_senti_word.append(p[1])
+                if p[1] == word:
+                    cur_topic_senti_word.append(p[0])
+
+    # Tính toán điểm cảm xúc cho các từ cảm xúc
+    for senti_word in cur_topic_senti_word:
+        cur_topic_sentiment += get_word_sentiment_score(senti_word)
+
+    # Giới hạn điểm cảm xúc trong khoảng [-5, 5]
+    cur_topic_sentiment = max(min(cur_topic_sentiment, 5), -5)
+    topic_sentiment_m[topic_id] = cur_topic_sentiment
+    
+    return topic_sentiment_m
 
 def get_coarse_simtiment_score(text, word2vec_model):
     word_seg = word_segment(text)
@@ -216,8 +359,12 @@ for i in data:
 #  step1: LDA
 num_topics = 10
 num_words = 300
-lda_model, dictionary, topic_to_words = get_lda_mdoel(split_data, num_topics, num_words)
-
+# lda_model, dictionary, topic_to_words = get_lda_mdoel(split_data, num_topics, num_words)
+# print("LDA dictionary: ", dictionary)
+# print("LDA topic_to_words: ", topic_to_words)
+# embeddings, model, kmeans, tbert_dictionary, tbert_topic_to_words = get_tbert_model(split_data, num_topics, num_words)
+# print("T-BERT dictionary: ", tbert_dictionary)
+# print("T-BERT topic_to_words: ", tbert_topic_to_words)
 # step2: 依存句法分析
 model_path = './config/stanford-parser-full-2020-11-17/stanford-parser-4.2.0-models.jar'
 parser_path = './config/stanford-parser-full-2020-11-17/stanford-parser.jar'
@@ -279,39 +426,79 @@ item_feature_dict_coarse = {}
 allFeatureReview = pd.DataFrame(columns=['reviewerID', 'itemID', 'overall', 'unixReviewTime', 'fine_feature', 'coarse_feature'])
 rowList = []
 
+
+def split_text(text, max_length=300):
+    """Split text into smaller chunks of maximum length max_length."""
+    sentences = text.split('. ')
+    chunks = []
+    current_chunk = []
+
+    for sentence in sentences:
+        if len(' '.join(current_chunk + [sentence])) > max_length:
+            chunks.append(' '.join(current_chunk))
+            current_chunk = [sentence]
+        else:
+            current_chunk.append(sentence)
+    if current_chunk:
+        chunks.append(' '.join(current_chunk))
+    
+    return chunks
+
 def ExtractReviewFeature(data_df):
+    # embeddings, model, kmeans, tbert_dictionary, tbert_topic_to_words = get_tbert_model(split_data, num_topics, num_words)
     # 商品特征提取
-    print("=========================Merge Items==========================")
+    print("=========================Extract Reviews==========================")
+    rowList = []
+    ErrorList = []
+    
     for asin, df in tqdm.tqdm(data_df.groupby("asin")):
         review_text = df["reviewText"].tolist()
         reviewerID = df["reviewerID"].tolist()
         overall = df["overall"].tolist()
-        coarse_feature = 0
+
         for i, text in enumerate(review_text):
             try:
-                # text = text[:500]
-                # text = remove_special_characters(text)
-                fine_feature = get_topic_sentiment_metrix(text, dictionary, lda_model, topic_to_words, dep_parser, topic_nums=num_topics)
-                coarse_feature = get_coarse_score(text, word2vec_model)
-                print("[",i ,"]", "Fine_feature: ", fine_feature, " - Coarse_feature: ", coarse_feature)
-                new_row = {'reviewerID':reviewerID[i], 'itemID':asin, 'overall': overall[i],
-                           'fine_feature':fine_feature, 'coarse_feature':coarse_feature}
+                fine_feature = np.zeros(num_topics)
+                coarse_feature = 0
+                
+                # Split the text into chunks
+                text_chunks = split_text(text)
+                
+                for chunk in text_chunks:
+                    fine_feature_chunk = get_topic_sentiment_metrix_tbert(chunk, tbert_topic_to_words, dep_parser, topic_nums=num_topics)
+                    coarse_feature_chunk = get_coarse_score(chunk, word2vec_model)
+                    
+                    fine_feature += fine_feature_chunk
+                    coarse_feature += coarse_feature_chunk
+                
+                # Average the coarse feature by the number of chunks
+                coarse_feature /= len(text_chunks)
+                
+                # Clip the fine_feature values to the range [-5, 5]
+                fine_feature = np.clip(fine_feature, -5, 5)
+
+                print("[", i, "]", "Fine_feature: ", fine_feature, " - Coarse_feature: ", coarse_feature)
+                new_row = {'reviewerID': reviewerID[i], 'itemID': asin, 'overall': overall[i],
+                           'fine_feature': fine_feature, 'coarse_feature': coarse_feature}
                 rowList.append(new_row)
             except Exception as e:
                 print("Error: ", e, "Text: ", text)
                 ErrorList.append(text)
                 continue
+    
     return pd.DataFrame(rowList, columns=['reviewerID', 'itemID', 'overall', 'fine_feature', 'coarse_feature'])
         
 def MergeFineCoarseFeatures(data_df, groupBy="reviewerID"):
     print("=========================Merge Features==========================")
     feature_dict = {}
     for id, df in data_df.groupby(groupBy):
-        count = 0
+        
         feature = np.zeros(10) # Khởi tạo vector đặc trưng
         list_finefeature = df['fine_feature']
         list_coarse_feature = df['coarse_feature']
+        # print(list_coarse_feature)
         for fine, coarse in zip(list_finefeature, list_coarse_feature):
+            count = 0
             try:
                 fine_feature = np.fromstring(fine.strip('[]'), dtype=float, sep=' ')
                 coarse_feature = float(coarse)
@@ -323,6 +510,7 @@ def MergeFineCoarseFeatures(data_df, groupBy="reviewerID"):
             except Exception as e:
                 print("Error: ", e)
                 continue
+        # print(feature)
         feature_dict[id] = np.array(feature.tolist())  
     return feature_dict
 
@@ -399,65 +587,65 @@ def list_to_matrix(vector_list):
     matrix = np.vstack(vector_list)
     return matrix
 
-def AverageVector():
-    data_df = pd.read_csv("./feature/allFeatureReview.csv")
+# def AverageVector():
+#     data_df = pd.read_csv("./feature/allFeatureReview.csv")
     
-    data_df.columns = ['ReviewerID', 'itemID', 'overall', 'fine_feature', 'coarse_feature']
-    averageVector = np.zeros(10)
-    for key, value in data_df.groupby('itemID'):
-        # Chuyển đổi kiểu dữ liệu của 'fine_feature' từ chuỗi sang mảng numpy số thực
-        value['fine_feature'] = value['fine_feature'].apply(lambda x: np.fromstring(x.strip('[]'), dtype=float, sep=' '))
+#     data_df.columns = ['ReviewerID', 'itemID', 'overall', 'fine_feature', 'coarse_feature']
+#     averageVector = np.zeros(10)
+#     for key, value in data_df.groupby('itemID'):
+#         # Chuyển đổi kiểu dữ liệu của 'fine_feature' từ chuỗi sang mảng numpy số thực
+#         value['fine_feature'] = value['fine_feature'].apply(lambda x: np.fromstring(x.strip('[]'), dtype=float, sep=' '))
         
-        # Chuyển đổi kiểu dữ liệu của 'coarse_feature' từ chuỗi sang số thực
-        value['coarse_feature'] = value['coarse_feature'].apply(lambda x: float(x))
+#         # Chuyển đổi kiểu dữ liệu của 'coarse_feature' từ chuỗi sang số thực
+#         value['coarse_feature'] = value['coarse_feature'].apply(lambda x: float(x))
         
-        # Thực hiện phép nhân giữa 'fine_feature' và 'coarse_feature'
-        list_feature = [np.multiply(a, b) for a, b in zip(value['fine_feature'], value['coarse_feature'])]
+#         # Thực hiện phép nhân giữa 'fine_feature' và 'coarse_feature'
+#         list_feature = [np.multiply(a, b) for a, b in zip(value['fine_feature'], value['coarse_feature'])]
         
-        # Tính vector trung bình
-        # averageVector = np.mean(list_feature, axis=0)
+#         # Tính vector trung bình
+#         # averageVector = np.mean(list_feature, axis=0)
         
-        maxtrix_feature = list_to_matrix(list_feature)
-        # print("maxtrix: ", maxtrix_feature)
-        # averageVector = reduce_dimensionality(maxtrix_feature, method='umap', n_components=1)
-        averageVectorbyItem[key] = averageVector.tolist()
-    # print("average: ", averageVectorbyItem)
-    CreateAndWriteCSV('averageVectorbyItem', averageVectorbyItem)
-AverageVector()
+#         maxtrix_feature = list_to_matrix(list_feature)
+#         # print("maxtrix: ", maxtrix_feature)
+#         # averageVector = reduce_dimensionality(maxtrix_feature, method='umap', n_components=1)
+#         averageVectorbyItem[key] = averageVector.tolist()
+#     # print("average: ", averageVectorbyItem)
+#     CreateAndWriteCSV('averageVectorbyItem', averageVectorbyItem)
+# AverageVector()
 
 filteredFeatures = pd.DataFrame(columns=['reviewerID', 'itemID', 'overall', 'fine_feature', 'coarse_feature'])
 
-def remove_outliers(filepath, listAverageVector):
-    # Đọc dữ liệu từ file CSV
-    data = pd.read_csv(filepath)
-    result =pd.DataFrame(columns=['reviewerID', 'itemID', 'overall', 'fine_feature', 'coarse_feature'])
-    for itemID, df in data.groupby('itemID'):
-        list_finefeature = df['fine_feature']
-        list_coarse_feature = df['coarse_feature']
-        feature_distance = []
-        normalize_vector = listAverageVector[itemID]
-        for fine, coarse in zip(list_finefeature, list_coarse_feature):
-            fine_feature = np.fromstring(fine.strip('[]'), dtype=float, sep=' ')
-            coarse_feature = float(coarse)
-            feature = fine_feature * coarse_feature
+# def remove_outliers(filepath, listAverageVector):
+#     # Đọc dữ liệu từ file CSV
+#     data = pd.read_csv(filepath)
+#     result =pd.DataFrame(columns=['reviewerID', 'itemID', 'overall', 'fine_feature', 'coarse_feature'])
+#     for itemID, df in data.groupby('itemID'):
+#         list_finefeature = df['fine_feature']
+#         list_coarse_feature = df['coarse_feature']
+#         feature_distance = []
+#         normalize_vector = listAverageVector[itemID]
+#         for fine, coarse in zip(list_finefeature, list_coarse_feature):
+#             fine_feature = np.fromstring(fine.strip('[]'), dtype=float, sep=' ')
+#             coarse_feature = float(coarse)
+#             feature = fine_feature * coarse_feature
             
-            cosine_distance = distance.cosine(feature, normalize_vector)
-            feature_distance.append(cosine_distance)
-        Q1 = np.percentile(feature_distance, 25, axis=0)
-        Q3 = np.percentile(feature_distance, 75, axis=0)
-        IQR = Q3 - Q1
+#             cosine_distance = distance.cosine(feature, normalize_vector)
+#             feature_distance.append(cosine_distance)
+#         Q1 = np.percentile(feature_distance, 25, axis=0)
+#         Q3 = np.percentile(feature_distance, 75, axis=0)
+#         IQR = Q3 - Q1
 
-        lower_bound = Q1 - 1.5 * IQR
-        upper_bound = Q3 + 1.5 * IQR
-        # Tạo mảng boolean cho việc loại bỏ ngoại lai
-        outliers_mask = np.array([lower_bound <= x <= upper_bound for x in feature_distance])
-        # Loại bỏ các giá trị ngoại lai
-        df.drop(df[~outliers_mask].index, inplace=True)
-        # Thêm vào result
-        result = pd.concat([result, df], axis=0, ignore_index=True)
-    return result
-filteredFeatures = remove_outliers('./feature/allFeatureReview.csv', averageVectorbyItem)
-filteredFeatures.to_csv('feature/filteredFeatures.csv', index=False)
+#         lower_bound = Q1 - 1.5 * IQR
+#         upper_bound = Q3 + 1.5 * IQR
+#         # Tạo mảng boolean cho việc loại bỏ ngoại lai
+#         outliers_mask = np.array([lower_bound <= x <= upper_bound for x in feature_distance])
+#         # Loại bỏ các giá trị ngoại lai
+#         df.drop(df[~outliers_mask].index, inplace=True)
+#         # Thêm vào result
+#         result = pd.concat([result, df], axis=0, ignore_index=True)
+#     return result
+# filteredFeatures = remove_outliers('./feature/allFeatureReview.csv', averageVectorbyItem)
+# filteredFeatures.to_csv('feature/filteredFeatures.csv', index=False)
 
 # print(reviewer_feature_dict)
 # print(item_feature_dict)
@@ -488,13 +676,7 @@ else:
 #endregion
 #=======================================================================
 
-def direct_sum(A, B):
-    m, n = A.shape
-    p, q = B.shape
-    result = np.zeros((m+p, n+q), dtype=A.dtype)
-    result[:m, :n] = A
-    result[m:, n:] = B
-    return result
+
 
 #region SVDFeature
 import svd
@@ -522,8 +704,10 @@ emb_user,emb_item = svd.get_embedings()
 # print(emb_item.shape)
 # print(np.sqrt(svd.cost(emb_user,emb_item)))
 print(len(reviewer_feature_dict))
+# print(reviewer_feature_dict)
 args.user_length = len(reviewer_feature_dict)
 print(len(item_feature_dict))
+# print(item_feature_dict)
 args.item_length = len(item_feature_dict)
 # print(svd.get_user_embedding('AX0ZEGHH0H525').shape)
 
@@ -592,26 +776,93 @@ def Calculate_Deep(v, z, start):
     for name, z_i in z.items():
         if i < len(v):  # Đảm bảo vẫn còn phần tử trong danh sách v
             v_i = v[i]
-            sum_v_z = v_i * z_i
-            sum_v2_z2 = (v_i**2) * (z_i**2)
-            result = (1 / 2) * ((sum_v_z)**2 - sum_v2_z2)
+            v_i = np.array(v_i)
+            print("i: ", i, "v_i: ", v_i)
+            v_z = v_i * z_i
+            v2_z2 = (v_i**2) * (z_i**2)
+            result = (1 / 2) * ((v_z)**2 - v2_z2)
             list_sum[name] = result
             i += 1
     return list_sum
 
-#==============================================================================
+# def Calculate_Deep(v, z, start):
+#     list_sum = {}
+#     i = start
+#     for name, z in z.items():
+#         print(z)
+#         # Check if both vectors have the same length
+#         print(v[0])
+#         if len(v) > i:
+#             # raise ValueError("The vectors v and z must have the same length")
+#             v_i = v[i]
+#             # Calculate the sum of v_i * z_i
+#             sum_vz = np.sum(v_i * z)
+            
+#             # Calculate the sum of (v_i * z_i)^2
+#             sum_vz_squared = sum_vz ** 2
+            
+#             # Calculate the sum of (v_i^2 * z_i^2)
+#             sum_v2_z2 = np.sum((v_i ** 2) * (z ** 2))
+            
+#             # Calculate U_deep
+#             result = 0.5 * (sum_vz_squared - sum_v2_z2)
+#             list_sum[name] = result
+#             i += 1
+#     return list_sum
 
-from train import *
+
+#==============================================================================
+# from torchfm.model.fm import FactorizationMachineModel
+
+# class CustomFactorizationMachineModel(FactorizationMachineModel):
+#     def get_embedding(self, feature_type, feature_id):
+#         """
+#         Lấy embedding vector cho một feature cụ thể dựa trên loại feature và ID.
+#         feature_type: 'reviewerID' hoặc 'asin'
+#         feature_id: ID của feature
+#         """
+#         # Giả sử 'reviewerID' tương ứng với field đầu tiên và 'asin' với field thứ hai
+#         if feature_type == 'reviewerID':
+#             field_index = 0
+#         elif feature_type == 'asin':
+#             field_index = 1
+#         else:
+#             raise ValueError("Unknown feature type")
+
+#         # Lấy embedding cho feature ID
+#         feature_offset = sum(self.field_dims[:field_index])
+#         feature_index = feature_offset + feature_id
+        
+#         # Truy cập vào lớp embedding và lấy vector
+#         with torch.no_grad():
+#             embedding_vector = self.embedding(feature_index).cpu().numpy()
+        
+#         return embedding_vector
+
+#==============================================================================
+from train import get_dataset, get_model
+from FactorizationMachine import fm
 from config import args
 from data_process import *
 
+v_list = []
 
+
+for name in z_review.items():
+    v_list.append(fm.get_embedding('reviewerID_' + name[0]))
+print("================")
+for name in z_item.items():
+    v_list.append(fm.get_embedding('itemID_' + name[0]))
 # device = torch.device(args.device)
 dataset = get_dataset(args.dataset_name, args.data_feature)
-# model = get_model(dataset).to(device)
-model = get_model(dataset)
-v_list = np.array(model.embedding.embedding.weight.data.tolist())
-# print(v_list)
+# model = get_model(dataset)
+# custom_model = CustomFactorizationMachineModel(dataset.field_dims, 20)
+# for name in z_review.items():
+# print(custom_model.get_embedding('reviewerID', 10))
+    
+
+# v_list = np.array(model.embedding.embedding.weight.data.tolist())
+print(v_list)
 u_deep = Calculate_Deep(v_list, z_review, 0)
 i_deep = Calculate_Deep(v_list, z_item, len(z_review))
 CreateAndWriteCSV("u_deep", u_deep)

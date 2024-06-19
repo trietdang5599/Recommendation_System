@@ -1,5 +1,5 @@
 # -*- coding:utf-8 -*-
-
+import torch
 from lda_bert import LDA_BERT
 import pandas as pd
 import numpy as np
@@ -7,7 +7,10 @@ from gensim import corpora
 from gensim.models import LdaModel
 from nltk.corpus import sentiwordnet as swn
 from nltk.parse.stanford import StanfordDependencyParser
-
+from sklearn.cluster import KMeans
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+from transformers import BertTokenizer, BertModel
 from utils import word_segment, preprocessed
 
 
@@ -46,6 +49,48 @@ def get_lda_mdoel(split_data, num_topics, num_words):
         cur_topic_words = [ele[0] for ele in model.show_topic(i, num_words)]
         topic_to_words.append(cur_topic_words)
     return model, dictionary, topic_to_words
+
+def get_tbert_model(split_data, num_topics, num_words):
+    """ T-BERT模型训练词表构建主题单词矩阵获取 """
+    
+    # Load pre-trained BERT model and tokenizer
+    model_name = 'bert-base-uncased'
+    tokenizer = BertTokenizer.from_pretrained(model_name)
+    model = BertModel.from_pretrained(model_name)
+    
+    # Tokenize and get BERT embeddings for each document
+    def get_bert_embeddings(texts):
+        inputs = tokenizer(texts, return_tensors='pt', padding=True, truncation=True, max_length=512)
+        with torch.no_grad():
+            outputs = model(**inputs)
+        return outputs.last_hidden_state.mean(dim=1).numpy()
+    
+    embeddings = [get_bert_embeddings([' '.join(text)]) for text in split_data]
+    embeddings = torch.vstack(embeddings).numpy()
+    
+    # Clustering to find topics
+    kmeans = KMeans(n_clusters=num_topics, random_state=0).fit(embeddings)
+    labels = kmeans.labels_
+    
+    # Extract top words for each topic
+    topic_to_words = []
+    for i in range(num_topics):
+        cluster_indices = [j for j, label in enumerate(labels) if label == i]
+        cluster_texts = [' '.join(split_data[j]) for j in cluster_indices]
+        
+        vectorizer = TfidfVectorizer(max_features=num_words)
+        tfidf_matrix = vectorizer.fit_transform(cluster_texts)
+        
+        indices = tfidf_matrix.sum(axis=0).argsort()[0, ::-1]
+        feature_names = vectorizer.get_feature_names_out()
+        top_words = [feature_names[ind] for ind in indices[:num_words]]
+        topic_to_words.append(top_words)
+    
+    # Create a dummy dictionary for compatibility
+    dictionary = {i: word for i, word in enumerate(vectorizer.get_feature_names_out())}
+    
+    return model, dictionary, topic_to_words
+
 
 # step2: nltk 依存句法分析
 

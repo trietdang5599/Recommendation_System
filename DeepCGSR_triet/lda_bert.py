@@ -7,10 +7,29 @@ import gensim
 from AutoEncoder import *
 from preprocess_word import preprocess
 import pandas as pd
+import pickle
+import os
 # from datetime import datetime
 
 class LDA_BERT:
 
+    def save_model(self, filepath):
+            """
+            Save the trained model to a checkpoint file
+            :param filepath: path to save the checkpoint file
+            """
+            with open(filepath, 'wb') as f:
+                pickle.dump(self, f)
+    
+    def load_model(filepath):
+        """
+        Load the trained model from a checkpoint file
+        :param filepath: path to the checkpoint file
+        :return: the trained model
+        """
+        with open(filepath, 'rb') as f:
+            return pickle.load(f)
+    
     def get_topic_words(token_lists, labels, k=None):
         ''' Get topic within each topic form clustering results '''
         if k is None:
@@ -172,11 +191,21 @@ if __name__ == '__main__':
     method = "LDA_BERT"
     samp_size = 51000
     ntopic = 10
-    tm = LDA_BERT(k = ntopic, method = method, documents=documents)
-    # topic_to_words = []
+    checkpoint_path = "chkpt/model_TBERT_checkpoint.pkl"
+    if os.path.exists(checkpoint_path):
+        # Load the model from the checkpoint
+        tm = LDA_BERT.load_model(checkpoint_path)
+    else:
+        # Train the model
+        tm = LDA_BERT(k=ntopic, method=method, documents=documents)
+        # Save the trained model as a checkpoint
+        tm.save_model(checkpoint_path)
+    topic_to_words = []
+    print(tm.get_topic_words(tm.token_lists, tm.cluster_model.labels_))
     # for i in range(ntopic):
     #     cur_topic_words = [ele[0] for ele in tm.show_topic(i, ntopic)]
     #     topic_to_words.append(cur_topic_words)
+    # print(topic_to_words)
 
 
     
